@@ -187,6 +187,7 @@ void setup()
   Serial.println("Send the 'c' character to read a frame ...");
   Serial.println("Send the 's' character to start/stop continuous display mode");
   Serial.println("Send the 'p' character to snapshot to PC on USB1");
+  Serial.println("Send the 'b' character to save snapshot (BMP) to SD Card");
   Serial.println();
 
   //hm01b0.loadSettings(LOAD_WALKING1S_REG);
@@ -220,6 +221,7 @@ void loop()
           break;
         }
       case 's':
+      {
         if (g_continuous_mode) {
           g_continuous_mode = false;
           Serial.println("*** Continuous mode turned off");
@@ -228,7 +230,9 @@ void loop()
           Serial.println("*** Continuous mode turned on");
         }
         break;
+      }
       case 'p':
+      {
           memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
           hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
           hm01b0.readFrame(frameBuffer);
@@ -243,17 +247,35 @@ void loop()
           Serial.println("Image Sent!");
           ch = ' ';
           g_continuous_mode = false;
-    }
-
-      if(g_continuous_mode){ 
-            memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-            hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-            hm01b0.readFrame(frameBuffer);
-            for(int i = 0; i < FRAME_HEIGHT*FRAME_WIDTH; i++) {
-              imageBuffer[i] = color565(frameBuffer[i], frameBuffer[i], frameBuffer[i]);
-            }
-            tft.writeRect(0, 0, tft.width(), tft.height(), imageBuffer);
+          break;
       }
+       case 'b':
+       {
+          memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
+          hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
+          hm01b0.readFrame(frameBuffer);
+          uint32_t idx1 = 0;
+          for(int i = 0; i < FRAME_HEIGHT*FRAME_WIDTH; i++) {
+            idx1 = i*2;
+            imageBuffer[i] = frameBuffer[i] << 16 | frameBuffer[i] << 8 | frameBuffer[i];
+            sendImageBuf[idx1+1] = (imageBuffer[i] >> 0) & 0xFF;
+            sendImageBuf[idx1] = (imageBuffer[i] >> 8) & 0xFF;
+          }
+          save_image_SD();
+          break;
+       }
+     }
+  }
+
+
+  if(g_continuous_mode){ 
+        memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
+        hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
+        hm01b0.readFrame(frameBuffer);
+        for(int i = 0; i < FRAME_HEIGHT*FRAME_WIDTH; i++) {
+          imageBuffer[i] = color565(frameBuffer[i], frameBuffer[i], frameBuffer[i]);
+        }
+        tft.writeRect(0, 0, tft.width(), tft.height(), imageBuffer);
   }
 
 }
@@ -268,10 +290,6 @@ void send_raw() {
   imagesize = (FRAME_WIDTH * FRAME_HEIGHT * 2);
   SerialUSB1.write(sendImageBuf, imagesize);
 }
-
-
-
-
 
 void save_image_SD() {
   if (!SD.begin(10)) {
@@ -295,15 +313,15 @@ void save_image_SD() {
   fileheader.bfSize = imagesize + fileheader.bfOffBits;
 
   Serial.printf("fb ready to save %lu bytes.", imagesize);
-  Serial.println("Saving OV7670.bmp ");
-  if (SD.exists("OV7670.bmp")) {
+  Serial.println("Saving HM01B0.bmp ");
+  if (SD.exists("HM01B0.bmp")) {
     // delete the file:
-    Serial.println("Removing OV7670.bmp...");
-    SD.remove("OV7670.bmp");
+    Serial.println("Removing HM01B0.bmp...");
+    SD.remove("HM01B0.bmp");
   }
-  bmpfile = SD.open("OV7670.bmp", FILE_WRITE);
+  bmpfile = SD.open("HM01B0.bmp", FILE_WRITE);
   bmpfile.write((const uint8_t *)&fileheader, sizeof(fileheader));
-  bmpfile.write(frameBuffer, imagesize);
+  bmpfile.write(sendImageBuf, imagesize);
   bmpfile.close();
   Serial.println("File saved to SD card.");
 }
