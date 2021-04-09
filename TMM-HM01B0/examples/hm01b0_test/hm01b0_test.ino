@@ -61,11 +61,13 @@ ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST);
 
 uint16_t FRAME_WIDTH, FRAME_HEIGHT;
 uint8_t frameBuffer[(324) * 244];
-uint16_t imageBuffer[(324) * 244];
+uint16_t imageBuffer[(324) * 244]; DMAMEM
 uint8_t sendImageBuf[(324) * 244 * 2];
+uint16_t imageBuffer2[(324) * 244] DMAMEM;
 
 bool g_continuous_mode = false;
 bool g_continuous_pc_mode = false;
+bool g_dma_mode = false;
 
 ae_cfg_t aecfg;
 
@@ -83,6 +85,9 @@ void setup()
   delay(500);
   tft.fillScreen(TFT_BLUE);
   delay(500);
+  tft.fillScreen(TFT_BLACK);
+  delay(500);
+
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_YELLOW);
   tft.setTextSize(2);
@@ -175,6 +180,7 @@ void setup()
   Serial.println("Send the 's' character to read a frame ...");
   Serial.println("Send the 'c' character to start/stop continuous display mode");
   Serial.println("Send the 'p' character to snapshot to PC on USB1");
+  Serial.println("Send the 'd' character to read a frame using DMA ...");
   Serial.println("Send the 'b' character to save snapshot (BMP) to SD Card");
   Serial.println("Send the '0' character to blank the display");
   Serial.println();
@@ -183,6 +189,17 @@ void setup()
   //hm01b0.set_colorbar(true);
   
 }
+
+uint16_t *last_dma_frame_buffer = nullptr;
+
+void hm01b0_dma_callback(void *pfb) {
+  //Serial.printf("Callback: %x\n", (uint32_t)pfb);
+  tft.writeRect(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint16_t*)pfb);
+  tft.updateScreenAsync();
+
+  last_dma_frame_buffer = (uint16_t*)pfb;
+}
+
 
 void loop()
 {
@@ -238,7 +255,7 @@ void loop()
           g_continuous_mode = false;
           break;
       }
-       case 'b':
+      case 'b':
        {
         #if defined(USE_SDCARD)
           calAE();
@@ -249,6 +266,25 @@ void loop()
         #endif
           break;
        }
+      case 'd':
+        {
+          if (g_dma_mode) {
+            Serial.println("*** stopReadFrameDMA ***");
+            hm01b0.stopReadFrameDMA();
+            Serial.println("*** return from stopReadFrameDMA ***");
+            tft.endUpdateAsync();
+            tft.useFrameBuffer(false);
+            g_dma_mode = false;
+          } else {
+            hm01b0.startReadFrameDMA(&hm01b0_dma_callback, imageBuffer, imageBuffer2);
+            Serial.println("*** Return from startReadFrameDMA ***");
+            tft.useFrameBuffer(true);
+            //        tft.updateScreenAsync(true);
+            //        Serial.println("*** Return from updateScreenAsync ***");
+            g_dma_mode = true;
+          }
+          break;
+        }
        case '0':
        {
           tft.fillScreen(TFT_BLACK);

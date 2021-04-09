@@ -37,6 +37,7 @@ SOFTWARE.
 #define __HM01B0_H__
 
 #include <Arduino.h>
+#include <DMAChannel.h>
 
 #define SensorMonochrome 1
 
@@ -128,6 +129,15 @@ class HM01B0
 	uint8_t get_ae( ae_cfg_t *psAECfg);
 	uint8_t cal_ae( uint8_t CalFrames, uint8_t* Buffer, uint32_t ui32BufferLen, ae_cfg_t* pAECfg);
 	uint16_t get_modelid();
+
+	// Lets try a dma version.  Doing one DMA that is synchronous does not gain anything
+	// So lets have a start, stop... Have it allocate 2 frame buffers and it's own DMA 
+	// buffers, with the option of setting your own buffers if desired.
+	bool startReadFrameDMA(void(*callback)(void *frame_buffer)=nullptr, uint16_t *fb1=nullptr, uint16_t *fb2=nullptr);
+	bool stopReadFrameDMA();
+	inline uint32_t frameCount() {return _dma_frame_count;}
+	inline void *frameBuffer() {return _dma_last_completed_frame;}
+
 
 	int init();
 	
@@ -230,6 +240,43 @@ class HM01B0
 	const volatile uint32_t *_pclkPort;
 	
 	uint32_t OMV_XCLK_FREQUENCY	= 12000000;
+
+	// DMA STUFF
+	enum {DMABUFFER_SIZE=1280};  // 640x480  so 640*2*2
+	static DMAChannel _dmachannel;
+	static DMASetting _dmasettings[2];
+	static uint32_t _dmaBuffer1[DMABUFFER_SIZE];
+	static uint32_t _dmaBuffer2[DMABUFFER_SIZE];
+
+	void (*_callback)(void *frame_buffer) =nullptr ;
+	uint32_t  _dma_frame_count;
+	uint16_t *_dma_last_completed_frame;
+	// TBD Allow user to set all of the buffers...
+
+	#if defined (ARDUINO_TEENSY_MICROMOD)
+	uint32_t _save_IOMUXC_GPR_GPR27;
+	#else
+	uint32_t _save_IOMUXC_GPR_GPR26;
+	#endif      
+	uint32_t _save_pclkPin_portConfigRegister;
+
+	uint32_t _bytes_left_dma;
+	uint16_t  _save_lsb;
+	uint16_t  _frame_col_index;  // which column we are in a row
+	uint16_t  _frame_row_index;  // which row
+	const uint16_t  _frame_ignore_cols = 4; // how many cols to ignore per row
+	uint16_t *_frame_buffer_1 = nullptr;
+	uint16_t *_frame_buffer_2 = nullptr;
+	uint16_t *_frame_buffer_pointer;
+	uint16_t *_frame_row_buffer_pointer; // start of the row
+	uint16_t _dma_index;
+	enum {DMASTATE_INITIAL=0, DMASTATE_RUNNING, DMASTATE_STOP_REQUESTED, DMA_STATE_STOPPED};
+	volatile uint8_t _dma_state;
+	static void dmaInterrupt(); 
+	void processDMAInterrupt();
+	static void frameStartInterrupt();
+	void processFrameStartInterrupt();
+	static HM01B0 *active_dma_camera;
 
 
 };
