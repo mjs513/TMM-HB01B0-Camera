@@ -62,6 +62,7 @@ ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST);
 uint16_t FRAME_WIDTH, FRAME_HEIGHT;
 uint8_t frameBuffer[(324) * 244];
 uint16_t imageBuffer[(324) * 244];
+uint8_t sendImageBuf[(324) * 244 * 2];
 
 bool g_continuous_mode = false;
 bool g_continuous_pc_mode = false;
@@ -160,17 +161,6 @@ void setup()
   FRAME_WIDTH  = hm01b0.w;
   Serial.printf("ImageSize (w,h): %d, %d\n", hm01b0.w, hm01b0.h);
 
-  // Calibrate Autoexposure
-  Serial.println("Calibrating Auto Exposure..."); 
-  memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-  if(hm01b0.cal_ae(10, frameBuffer, FRAME_WIDTH*FRAME_HEIGHT, &aecfg) != HM01B0_ERR_OK){
-    Serial.println("\tnot converged"); 
-    hm01b0.cmdUpdate();
-  }else{
-    Serial.println("\tconverged!");
-    hm01b0.cmdUpdate();
-  }
-  
   Serial.println("Send the 's' character to read a frame ...");
   Serial.println("Send the 'c' character to start/stop continuous display mode");
   Serial.println("Send the 'p' character to snapshot to PC on USB1");
@@ -183,8 +173,6 @@ void setup()
   
 }
 
-
-
 void loop()
 {
   if (Serial.available()) {
@@ -193,7 +181,8 @@ void loop()
     switch (ch) {
       case 's':
        {
-          tft.fillScreen(TFT_BLACK); delay(4);
+          tft.fillScreen(TFT_BLACK);
+          calAE();
           Serial.println("Reading frame");
           memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
           hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
@@ -221,6 +210,7 @@ void loop()
       }
       case 'p':
       {
+          calAE();
           memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
           hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
           hm01b0.readFrame(frameBuffer);
@@ -240,6 +230,7 @@ void loop()
        case 'b':
        {
         #if defined(USE_SDCARD)
+          calAE();
           memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
           hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
           hm01b0.readFrame(frameBuffer);
@@ -272,30 +263,45 @@ uint16_t color565(uint8_t r, uint8_t g, uint8_t b) {
   return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
 }
 
+
+void calAE(){
+  // Calibrate Autoexposure
+  Serial.println("Calibrating Auto Exposure..."); 
+  memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
+  if(hm01b0.cal_ae(10, frameBuffer, FRAME_WIDTH*FRAME_HEIGHT, &aecfg) != HM01B0_ERR_OK){
+    Serial.println("\tnot converged"); 
+  }else{
+    Serial.println("\tconverged!");
+    hm01b0.cmdUpdate();
+  }
+}
+
 void send_raw() {
   uint32_t imagesize;
   imagesize = (FRAME_WIDTH * FRAME_HEIGHT * 2);
   SerialUSB1.write(sendImageBuf, imagesize);
 }
 
-char name[] = "HM01B01_0000.bmp";       // filename convention (will auto-increment)
+char name[] = "9px_0000.bmp";       // filename convention (will auto-increment)
 void save_image_SD(){
   uint8_t r, g, b;
   uint32_t x, y;
 
   Serial.println("Writing BMP to SD CARD");
+  Serial.println(name);
   
-  // if name exists, create new filename
-  for (int i=0; i<10000; i++) {
-    name[8] = (i/1000)%10 + '0';    // thousands place
-    name[8] = (i/100)%10 + '0';     // hundreds
-    name[9] = (i/10)%10 + '0';      // tens
-    name[10] = i%10 + '0';           // ones
-    file = SD.open(name, O_CREAT | O_EXCL | O_WRITE);
-    if (file) {
-      break;
+  // if name exists, create new filename, SD.exists(filename)
+    for (int i=0; i<10000; i++) {
+      name[4] = (i/1000)%10 + '0';    // thousands place
+      name[5] = (i/100)%10 + '0';     // hundreds
+      name[6] = (i/10)%10 + '0';      // tens
+      name[7] = i%10 + '0';           // ones
+      if(!SD.exists(name)){
+        Serial.println(name);
+        file = SD.open(name, FILE_WRITE);
+        break;
+      }
     }
-  }
 
   uint16_t w = FRAME_WIDTH;
   uint16_t h = FRAME_HEIGHT;
