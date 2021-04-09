@@ -290,7 +290,7 @@ void calAE(){
 void send_raw() {
   uint32_t imagesize;
   imagesize = (FRAME_WIDTH * FRAME_HEIGHT * 2);
-  SerialUSB1.write(sendImageBuf, imagesize);
+  SerialUSB1.write(sendImageBuf, imagesize); // set Tools > USB Type to "Dual Serial"
 }
 
 char name[] = "9px_0000.bmp";       // filename convention (will auto-increment)
