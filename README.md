@@ -23,3 +23,7 @@ The driver is primarily ported from the OpenMV HB01B0 driver. "The OpenMV projec
 Calibration of AutoExposure came from the existing Sparkfun library for the HB01B0.
 
 For more information on functions see the example provided with the library as well as: https://docs.openmv.io/library/omv.sensor.html.
+
+Teensy DMA support also has been add to the library by PJRC user @KurtE based on previous camera work.  
+
+See the PJRC Forum Thread MicroMod Beta Testing (https://forum.pjrc.com/threads/66771-MicroMod-Beta-Testing) for TMM.
