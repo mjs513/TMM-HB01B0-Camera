@@ -1019,7 +1019,7 @@ uint8_t HM01B0::get_ae( ae_cfg_t *psAECfg)
     if ((ui8AEMean < (ui8AETargetMean - ui8ConvergeInTh)) || (ui8AEMean > (ui8AETargetMean + ui8ConvergeInTh)))
         ui32Err = HM01B0_ERR_AE_NOT_CONVERGED;
 
-     //Serial.printf("AE Calibration(0x%02X) TargetMean 0x%02X, ConvergeInTh 0x%02X, AEMean 0x%02X\n",	\
+     //Serial.printf("AE Calibration(0x%02X) TargetMean 0x%02X, ConvergeInTh 0x%02X, AEMean 0x%02X\n",
      //                                 ui8AETargetMean, ui8ConvergeInTh, ui8AEMean);
     if (psAECfg)
     {
