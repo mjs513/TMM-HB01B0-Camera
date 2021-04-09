@@ -105,7 +105,7 @@ class HM01B0
 	int reset();
 	uint8_t cameraReadRegister(uint16_t reg);
 	uint8_t cameraWriteRegister(uint16_t reg, uint8_t data) ;
-	int set_pixformat( pixformat_t pixformat);
+	int set_pixformat( pixformat_t pfmt);
 	uint8_t set_framesize(framesize_t framesize);
 	int set_framerate(int framerate);
 	int set_brightness(int level);

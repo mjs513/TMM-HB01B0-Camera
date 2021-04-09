@@ -506,10 +506,10 @@ uint8_t HM01B0::cameraWriteRegister(uint16_t reg, uint8_t data) {
   return 0;
 }
 
-int HM01B0::set_pixformat( pixformat_t pixformat)
+int HM01B0::set_pixformat( pixformat_t pfmt)
 {
     int ret = 0;
-    switch (pixformat) {
+    switch (pfmt) {
         case PIXFORMAT_BAYER:
 			pixformat = PIXFORMAT_BAYER;
 			break;
@@ -867,7 +867,7 @@ void HM01B0::readFrame(void* buffer)
 
   uint8_t* b = (uint8_t*)buffer;
   int bytesPerRow = w ;
-    bool _grayscale = (pixformat == PIXFORMAT_GRAYSCALE);
+  bool _grayscale = (pixformat == PIXFORMAT_GRAYSCALE);
 
   // Falling edge indicates start of frame
   //pinMode(_pclkPin, INPUT); // make sure back to input pin...
@@ -892,7 +892,8 @@ void HM01B0::readFrame(void* buffer)
       uint32_t in =  (GPIO7_PSR >> 4); // read all bits in parallel
 	  //uint32_t in = mmBus;
 	  
-
+	  //Change for Monodchrome only HB01b0
+	  _grayscale = false;
       if (!(j & 1) || !_grayscale) {
         *b++ = in;
       }

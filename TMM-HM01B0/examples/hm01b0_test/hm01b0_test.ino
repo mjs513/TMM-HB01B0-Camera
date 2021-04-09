@@ -28,8 +28,8 @@ SDA             18      AD_B1_1 I2C
 #include <SPI.h>
 
 HM01B0 hm01b0;
-#define USE_SPARKFUN 1
-#define USE_SDCARD 1
+//#define USE_SPARKFUN 1
+//#define USE_SDCARD 1
 File file;
 
 #define TFT_DC  1
@@ -143,10 +143,21 @@ void setup()
     Serial.println("Settings failed to load");
     while(1){}
   }
-  //hm01b0.cmdUpdate();  //only need after changing auto exposure settings
-  hm01b0.set_framerate(120);  //15, 30, 60, 120
+  hm01b0.set_framerate(30);  //15, 30, 60, 120
   hm01b0.set_pixformat(PIXFORMAT_GRAYSCALE);
-  hm01b0.set_brightness(1);
+  /* Gain Ceilling
+   * GAINCEILING_1X
+   * GAINCEILING_4X
+   * GAINCEILING_8X
+   * GAINCEILING_16X
+   */
+  hm01b0.set_gainceiling(GAINCEILING_4X);
+  /* Brightness
+   *  Can be 1, 2, or 3
+   */
+  //hm01b0.set_brightness(2);
+  hm01b0.set_auto_exposure(true, 250);
+  hm01b0.cmdUpdate();  //only need after changing auto exposure settings
 
   hm01b0.set_mode(HIMAX_MODE_STREAMING,0); // turn on, continuous streaming mode
 
