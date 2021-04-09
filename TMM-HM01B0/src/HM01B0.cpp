@@ -893,7 +893,9 @@ void HM01B0::readFrame(void* buffer)
 	  //uint32_t in = mmBus;
 	  
 	  //Change for Monodchrome only HB01b0
-	  _grayscale = false;
+	  #if defined(SensorMonochrome) 
+		_grayscale = false;
+	  #endif
       if (!(j & 1) || !_grayscale) {
         *b++ = in;
       }

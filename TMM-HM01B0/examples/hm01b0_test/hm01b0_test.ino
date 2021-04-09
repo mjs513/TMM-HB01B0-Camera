@@ -318,7 +318,6 @@ void save_image_SD(){
   uint16_t h = FRAME_HEIGHT;
 
   unsigned char *img = NULL;
-  int filesize = 54 + 3*w*h;  //w is your image width, h is image height, both int
 
   // set fileSize (used in bmp header)
   int rowSize = 4 * ((3*w + 3)/4);      // how many bytes in the row (used to create padding)
@@ -345,18 +344,17 @@ void save_image_SD(){
 
   // create padding (based on the number of pixels in a row
   unsigned char bmpPad[rowSize - 3*w];
-  for (int i=0; i<sizeof(bmpPad); i++) {         // fill with 0s
+  for (int i=0; i< (int)(sizeof(bmpPad)); i++) {         // fill with 0s
     bmpPad[i] = 0;
   }
 
   unsigned char bmpFileHeader[14] = {'B','M', 0,0,0,0, 0,0, 0,0, 54,0,0,0};
   unsigned char bmpInfoHeader[40] = {40,0,0,0, 0,0,0,0, 0,0,0,0, 1,0, 24,0};
-  unsigned char bmppad[3] = {0,0,0};
 
-  bmpFileHeader[ 2] = (unsigned char)(filesize    );
-  bmpFileHeader[ 3] = (unsigned char)(filesize>> 8);
-  bmpFileHeader[ 4] = (unsigned char)(filesize>>16);
-  bmpFileHeader[ 5] = (unsigned char)(filesize>>24);
+  bmpFileHeader[ 2] = (unsigned char)(fileSize      );
+  bmpFileHeader[ 3] = (unsigned char)(fileSize >>  8);
+  bmpFileHeader[ 4] = (unsigned char)(fileSize >> 16);
+  bmpFileHeader[ 5] = (unsigned char)(fileSize >> 24);
 
   bmpInfoHeader[ 4] = (unsigned char)(       w    );
   bmpInfoHeader[ 5] = (unsigned char)(       w>> 8);

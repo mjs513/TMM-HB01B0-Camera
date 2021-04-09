@@ -38,6 +38,8 @@ SOFTWARE.
 
 #include <Arduino.h>
 
+#define SensorMonochrome 1
+
 typedef enum {
     PIXFORMAT_INVALID = 0,
     PIXFORMAT_BINARY,    // 1BPP/BINARY
