@@ -32,9 +32,9 @@ HM01B0 hm01b0;
 //#define USE_SDCARD 1
 File file;
 
-#define TFT_DC  1
-#define TFT_CS  5
-#define TFT_RST  0
+#define TFT_DC  1   // "TX1" on left side of Sparkfun ML Carrier
+#define TFT_CS  4   // "CS" on left side of Sparkfun ML Carrier
+#define TFT_RST  0  // "RX1" on left side of Sparkfun ML Carrier
 
 //#define TFT_ST7789 1
 #define TFT_ILI9341 1
@@ -50,7 +50,7 @@ ST7789_t3 tft = ST7789_t3(TFT_CS, TFT_DC, TFT_RST);
 #define TFT_BLUE  ST77XX_BLUE
 
 #else
-#include "ILI9341_t3n.h"
+#include "ILI9341_t3n.h" // https://github.com/KurtE/ILI9341_t3n
 ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST);
 #define TFT_BLACK ILI9341_BLACK
 #define TFT_YELLOW ILI9341_YELLOW
@@ -290,7 +290,7 @@ void calAE(){
 void send_raw() {
   uint32_t imagesize;
   imagesize = (FRAME_WIDTH * FRAME_HEIGHT * 2);
-  SerialUSB1.write(sendImageBuf, imagesize);
+  SerialUSB1.write(sendImageBuf, imagesize); // set Tools > USB Type to "Dual Serial"
 }
 
 char name[] = "9px_0000.bmp";       // filename convention (will auto-increment)

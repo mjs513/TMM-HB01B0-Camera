@@ -199,8 +199,11 @@ class HM01B0
 		// IEEE binary32 format
 		e.e = (e.e -1023 + 127) &0xFF; // rebase
 
-		uint32_t packed = (e.s << 31) | (e.e << 23) | e.m <<3;
-		return *((float*)&packed);
+		//uint32_t packed = (e.s << 31) | (e.e << 23) | e.m <<3;
+		//return *((float*)&packed);
+		union { uint32_t ul; float f; } packed;
+		packed.ul = (e.s << 31) | (e.e << 23) | e.m <<3;
+		return packed.f;
 	}
 	
   private:
