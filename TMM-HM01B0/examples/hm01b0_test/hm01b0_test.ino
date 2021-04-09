@@ -29,14 +29,15 @@ SDA             18      AD_B1_1 I2C
 
 HM01B0 hm01b0;
 #define USE_SPARKFUN 1
-
+#define USE_SDCARD 1
+File file;
 
 #define TFT_DC  1
 #define TFT_CS  5
 #define TFT_RST  0
 
-#define TFT_ST7789 1
-//#define TFT_ILI9341 1
+//#define TFT_ST7789 1
+#define TFT_ILI9341 1
 
 #ifdef TFT_ST7789
 //ST7735 Adafruit 320x240 display
@@ -49,8 +50,8 @@ ST7789_t3 tft = ST7789_t3(TFT_CS, TFT_DC, TFT_RST);
 #define TFT_BLUE  ST77XX_BLUE
 
 #else
-#include "ILI9341_t3.h"
-ILI9341_t3 tft = ILI9341_t3(TFT_CS, TFT_DC, TFT_RST);
+#include "ILI9341_t3n.h"
+ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST);
 #define TFT_BLACK ILI9341_BLACK
 #define TFT_YELLOW ILI9341_YELLOW
 #define TFT_RED   ILI9341_RED
@@ -58,36 +59,8 @@ ILI9341_t3 tft = ILI9341_t3(TFT_CS, TFT_DC, TFT_RST);
 #define TFT_BLUE  ILI9341_BLUE
 #endif
 
-
-# pragma pack (2)
-typedef struct  tBMPHDR565 {
-  uint16_t  bfType = 0x4d42;   //'bm';
-  uint32_t  bfSize = 614466;// 614400 pixels + 66 header
-  uint16_t  bfReserved1 = 0;
-  uint16_t  bfReserved2 = 0;
-  uint32_t  bfOffBits =  66; // 14 bytes to here
-  uint32_t  biSize = 40;
-  int32_t   biWidth = 640;
-  int32_t   biHeight = -480;  // windows wants negative for top-down image
-  int16_t   biPlanes = 1;
-  uint16_t  biBitCount = 16 ;
-  uint32_t  biCompression = 3;  // bitfields used
-  uint32_t  biSizeImage = 614400;  // 640 * 480 * 2
-  int32_t   biXPelsPerMeter = 0;
-  int32_t   biYPelsPerMeter = 0;
-  uint32_t  biClrUsed  = 0;
-  uint32_t  biClrImportant = 0;// 54 bytes
-  uint32_t  rmask = 0x0000F800;
-  uint32_t  gmask = 0x000007E0;
-  uint32_t  bmask = 0x0000001F;  //66 bytes
-} BMPHDR565;
-
-tBMPHDR565 fileheader;
-File bmpfile;
-
 uint16_t FRAME_WIDTH, FRAME_HEIGHT;
 uint8_t frameBuffer[(324) * 244];
-uint8_t sendImageBuf[324 * 244 * 2];
 uint16_t imageBuffer[(324) * 244];
 
 bool g_continuous_mode = false;
@@ -116,6 +89,19 @@ void setup()
 
   Wire.begin();
   Serial.begin(9600);
+
+#if defined(USE_SDCARD)
+    Serial.println("Using SDCARD - Initializing");
+    if (!SD.begin(10)) {
+    Serial.println("initialization failed!");
+    //while (1){
+    //    LEDON; delay(100);
+    //    LEDOFF; delay(100);
+    //  }
+  }
+  Serial.println("initialization done.");
+  delay(100);
+#endif
 
   
   while (!Serial) ;
@@ -157,7 +143,7 @@ void setup()
     while(1){}
   }
   //hm01b0.cmdUpdate();  //only need after changing auto exposure settings
-  hm01b0.set_framerate(30);  //15, 30, 60, 120
+  hm01b0.set_framerate(120);  //15, 30, 60, 120
   hm01b0.set_pixformat(PIXFORMAT_GRAYSCALE);
   hm01b0.set_brightness(1);
 
@@ -179,15 +165,17 @@ void setup()
   memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
   if(hm01b0.cal_ae(10, frameBuffer, FRAME_WIDTH*FRAME_HEIGHT, &aecfg) != HM01B0_ERR_OK){
     Serial.println("\tnot converged"); 
+    hm01b0.cmdUpdate();
   }else{
     Serial.println("\tconverged!");
     hm01b0.cmdUpdate();
   }
   
-  Serial.println("Send the 'c' character to read a frame ...");
-  Serial.println("Send the 's' character to start/stop continuous display mode");
+  Serial.println("Send the 's' character to read a frame ...");
+  Serial.println("Send the 'c' character to start/stop continuous display mode");
   Serial.println("Send the 'p' character to snapshot to PC on USB1");
   Serial.println("Send the 'b' character to save snapshot (BMP) to SD Card");
+  Serial.println("Send the '0' character to blank the display");
   Serial.println();
 
   //hm01b0.loadSettings(LOAD_WALKING1S_REG);
@@ -203,7 +191,7 @@ void loop()
     int ch = Serial.read();
     while (Serial.read() != -1); // get rid of the rest...
     switch (ch) {
-      case 'c':
+      case 's':
        {
           tft.fillScreen(TFT_BLACK); delay(4);
           Serial.println("Reading frame");
@@ -220,7 +208,7 @@ void loop()
           g_continuous_mode = false;
           break;
         }
-      case 's':
+      case 'c':
       {
         if (g_continuous_mode) {
           g_continuous_mode = false;
@@ -251,18 +239,17 @@ void loop()
       }
        case 'b':
        {
+        #if defined(USE_SDCARD)
           memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
           hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
           hm01b0.readFrame(frameBuffer);
-          uint32_t idx1 = 0;
-          for(int i = 0; i < FRAME_HEIGHT*FRAME_WIDTH; i++) {
-            idx1 = i*2;
-            imageBuffer[i] = frameBuffer[i] << 16 | frameBuffer[i] << 8 | frameBuffer[i];
-            sendImageBuf[idx1+1] = (imageBuffer[i] >> 0) & 0xFF;
-            sendImageBuf[idx1] = (imageBuffer[i] >> 8) & 0xFF;
-          }
           save_image_SD();
+        #endif
           break;
+       }
+       case '0':
+       {
+          tft.fillScreen(TFT_BLACK);
        }
      }
   }
@@ -291,37 +278,87 @@ void send_raw() {
   SerialUSB1.write(sendImageBuf, imagesize);
 }
 
-void save_image_SD() {
-  if (!SD.begin(10)) {
-    Serial.println("initialization failed!");
-    //while (1){
-    //    LEDON; delay(100);
-    //    LEDOFF; delay(100);
-    //  }
+char name[] = "HM01B01_0000.bmp";       // filename convention (will auto-increment)
+void save_image_SD(){
+  uint8_t r, g, b;
+  uint32_t x, y;
+
+  Serial.println("Writing BMP to SD CARD");
+  
+  // if name exists, create new filename
+  for (int i=0; i<10000; i++) {
+    name[8] = (i/1000)%10 + '0';    // thousands place
+    name[8] = (i/100)%10 + '0';     // hundreds
+    name[9] = (i/10)%10 + '0';      // tens
+    name[10] = i%10 + '0';           // ones
+    file = SD.open(name, O_CREAT | O_EXCL | O_WRITE);
+    if (file) {
+      break;
+    }
   }
-  Serial.println("initialization done.");
 
-  delay(100);
+  uint16_t w = FRAME_WIDTH;
+  uint16_t h = FRAME_HEIGHT;
 
-  uint32_t imagesize;
-  imagesize = (FRAME_WIDTH * FRAME_HEIGHT * 2);
+  unsigned char *img = NULL;
+  int filesize = 54 + 3*w*h;  //w is your image width, h is image height, both int
 
-  // lets update fileheader with our actual image size...
-  fileheader.biSizeImage = imagesize;
-  fileheader.biWidth = FRAME_WIDTH;
-  fileheader.biHeight = -FRAME_HEIGHT;
-  fileheader.bfSize = imagesize + fileheader.bfOffBits;
+  // set fileSize (used in bmp header)
+  int rowSize = 4 * ((3*w + 3)/4);      // how many bytes in the row (used to create padding)
+  int fileSize = 54 + h*rowSize;        // headers (54 bytes) + pixel data
 
-  Serial.printf("fb ready to save %lu bytes.", imagesize);
-  Serial.println("Saving HM01B0.bmp ");
-  if (SD.exists("HM01B0.bmp")) {
-    // delete the file:
-    Serial.println("Removing HM01B0.bmp...");
-    SD.remove("HM01B0.bmp");
+  img = (unsigned char *)malloc(3*w*h);
+  
+  for(int i=0; i<w; i++)
+  {
+    for(int j=0; j<h; j++)
+    {
+      //r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3
+      x=i; y=(h-1)-j;
+            
+      r = frameBuffer[(x+y*w)]    ;
+      g = frameBuffer[(x+y*w)]    ;
+      b = frameBuffer[(x+y*w)]    ;
+
+      img[(x+y*w)*3+2] = (unsigned char)(r);
+      img[(x+y*w)*3+1] = (unsigned char)(g);
+      img[(x+y*w)*3+0] = (unsigned char)(b);
+    }
   }
-  bmpfile = SD.open("HM01B0.bmp", FILE_WRITE);
-  bmpfile.write((const uint8_t *)&fileheader, sizeof(fileheader));
-  bmpfile.write(sendImageBuf, imagesize);
-  bmpfile.close();
-  Serial.println("File saved to SD card.");
+
+  // create padding (based on the number of pixels in a row
+  unsigned char bmpPad[rowSize - 3*w];
+  for (int i=0; i<sizeof(bmpPad); i++) {         // fill with 0s
+    bmpPad[i] = 0;
+  }
+
+  unsigned char bmpFileHeader[14] = {'B','M', 0,0,0,0, 0,0, 0,0, 54,0,0,0};
+  unsigned char bmpInfoHeader[40] = {40,0,0,0, 0,0,0,0, 0,0,0,0, 1,0, 24,0};
+  unsigned char bmppad[3] = {0,0,0};
+
+  bmpFileHeader[ 2] = (unsigned char)(filesize    );
+  bmpFileHeader[ 3] = (unsigned char)(filesize>> 8);
+  bmpFileHeader[ 4] = (unsigned char)(filesize>>16);
+  bmpFileHeader[ 5] = (unsigned char)(filesize>>24);
+
+  bmpInfoHeader[ 4] = (unsigned char)(       w    );
+  bmpInfoHeader[ 5] = (unsigned char)(       w>> 8);
+  bmpInfoHeader[ 6] = (unsigned char)(       w>>16);
+  bmpInfoHeader[ 7] = (unsigned char)(       w>>24);
+  bmpInfoHeader[ 8] = (unsigned char)(       h    );
+  bmpInfoHeader[ 9] = (unsigned char)(       h>> 8);
+  bmpInfoHeader[10] = (unsigned char)(       h>>16);
+  bmpInfoHeader[11] = (unsigned char)(       h>>24);
+
+  // write the file (thanks forum!)
+  file.write(bmpFileHeader, sizeof(bmpFileHeader));    // write file header
+  file.write(bmpInfoHeader, sizeof(bmpInfoHeader));    // " info header
+
+  for (int i=0; i<h; i++) {                            // iterate image array
+    file.write(img+(FRAME_WIDTH*(FRAME_HEIGHT-i-1)*3), 3*FRAME_WIDTH);                // write px data
+    file.write(bmpPad, (4-(FRAME_WIDTH*3)%4)%4);                 // and padding as needed
+  }
+  free(img);
+  file.close();                                        // close file when done writing
+  Serial.println("Done Writing BMP");
 }
