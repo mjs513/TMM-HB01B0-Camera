@@ -118,9 +118,9 @@ const uint16_t default_regs[][2] = {
     {FS_CTRL,              0x00},          //Flicker Control
    
     {FS_60HZ_H,            0x00},
-    {FS_60HZ_L,            0x3C},
+    {FS_60HZ_L,            0x85},
     {FS_50HZ_H,            0x00},
-    {FS_50HZ_L,            0x32},
+    {FS_50HZ_L,            0xa0},
 
     {MD_CTRL,              0x00},
     {FRAME_LEN_LINES_H,    HIMAX_FRAME_LENGTH_QVGA>>8},
@@ -1071,7 +1071,7 @@ int HM01B0::init()
 	analogWrite(MCLK_PIN, 128);
 	delay(5);
 	//set_mode(HIMAX_MODE_STREAMING,0);
-	
+		
     return 0;
 }
 

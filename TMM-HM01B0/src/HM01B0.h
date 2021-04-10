@@ -240,7 +240,7 @@ class HM01B0
 	const volatile uint32_t *_hrefPort;
 	const volatile uint32_t *_pclkPort;
 	
-	uint32_t OMV_XCLK_FREQUENCY	= 12000000;
+	uint32_t OMV_XCLK_FREQUENCY	= 6000000;
 
 	// DMA STUFF
 	enum {DMABUFFER_SIZE=1280};  // 640x480  so 640*2*2
