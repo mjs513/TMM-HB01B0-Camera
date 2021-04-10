@@ -1102,17 +1102,17 @@ void dumpDMA_TCD(DMABaseClass *dmabc)
 //===================================================================
 // Start a DMA operation -
 //===================================================================
-bool HM01B0::startReadFrameDMA(void(*callback)(void *frame_buffer), uint16_t *fb1, uint16_t *fb2)
+bool HM01B0::startReadFrameDMA(void(*callback)(void *frame_buffer), uint8_t *fb1, uint8_t *fb2)
 {
   // First see if we need to allocate frame buffers.
   if (fb1) _frame_buffer_1 = fb1;
   else if (_frame_buffer_1 == nullptr) {
-    _frame_buffer_1 = (uint16_t*)malloc(w * h * 2);
+    _frame_buffer_1 = (uint8_t*)malloc(w * h );
     if (_frame_buffer_1 == nullptr) return false;
   }
   if (fb2) _frame_buffer_2 = fb2;
   else if (_frame_buffer_2 == nullptr) {
-    _frame_buffer_2 = (uint16_t*)malloc(w * h * 2);
+    _frame_buffer_2 = (uint8_t*)malloc(w * h );
     if (_frame_buffer_2 == nullptr) return false; // BUGBUG should we 32 byte align?
   }
   // remember the call back if passed in
@@ -1124,7 +1124,7 @@ bool HM01B0::startReadFrameDMA(void(*callback)(void *frame_buffer), uint16_t *fb
   //DebugDigitalToggle(OV7670_DEBUG_PIN_1);
   // lets figure out how many bytes we will tranfer per setting...
   //  _dmasettings[0].begin();
-  _frame_row_buffer_pointer = _frame_buffer_pointer = (uint16_t *)_frame_buffer_1;
+  _frame_row_buffer_pointer = _frame_buffer_pointer = (uint8_t *)_frame_buffer_1;
 
   // configure DMA channels
   _dmachannel.begin();
@@ -1251,22 +1251,6 @@ void  HM01B0::frameStartInterrupt() {
 }
 
 void  HM01B0::processFrameStartInterrupt() {
-  //DebugDigitalWrite(OV7670_DEBUG_PIN_2, HIGH);
-//  asm("DSB");
-//  Serial.write(digitalReadFast(VSYNC_PIN)?'^': '`');
-/*
-  // Lets see if we get any glitch???
-  for (uint8_t ii = 0; ii < 10; ii++) {
-    if (*_vsyncPort & _vsyncMask) break;
-  }
-  for (uint8_t ii = 0; ii < 10; ii++) {
-    if (!(*_vsyncPort & _vsyncMask)) {
-        Serial.write('@'); Serial.write(ii+'0');
-        return;
-    }
-  }
-  */
-
   _bytes_left_dma = (w + _frame_ignore_cols) * h * 2; // for now assuming color 565 image...
   _dma_index = 0;
   _frame_col_index = 0;  // which column we are in a row
@@ -1290,16 +1274,6 @@ void HM01B0::dmaInterrupt() {
   active_dma_camera->processDMAInterrupt();  // lets get back to the main object...
 }
 
-static  uint16_t color565(uint8_t r, uint8_t g, uint8_t b) {
-
-    uint16_t c565 = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
-    static uint8_t debug_count = 16;
-    if (debug_count) {
-        Serial.printf("C565(%x, %x, %x) %x\n", r, g, b, c565);
-        debug_count--;
-    }
-  return c565;
-}
 
 // This version assumes only called when HREF...  as set pixclk to only fire
 // when set.
@@ -1326,7 +1300,6 @@ void HM01B0::processDMAInterrupt() {
     buffer = _dmaBuffer2;
     buffer_size = _dmasettings[1].TCD->CITER;
   }
-  bool _grayscale = (pixformat == PIXFORMAT_GRAYSCALE);
   // lets try dumping a little data on 1st 2nd and last buffer.
 #ifdef DEBUG_CAMERA
   if ((_dma_index < 3) || (buffer_size  < DMABUFFER_SIZE)) {
@@ -1343,7 +1316,6 @@ void HM01B0::processDMAInterrupt() {
     Serial.println();
   }
 #endif
-  _grayscale = 1 ; // (pixformat == PIXFORMAT_GRAYSCALE);
 
   for (uint16_t buffer_index = 0; buffer_index < buffer_size; buffer_index++) {
     if (!_bytes_left_dma || (_frame_row_index >= h)) break;
@@ -1356,7 +1328,7 @@ void HM01B0::processDMAInterrupt() {
     } else {
         // only process if href high...
         uint16_t b = *buffer >> 4;
-        if (_frame_col_index < w) *_frame_buffer_pointer++ = color565(b, b, b);
+        if (_frame_col_index < w) *_frame_buffer_pointer++ = b;
         _frame_col_index++;
         if (_frame_col_index == (w + _frame_ignore_cols)) {
             // we just finished a row.
@@ -1415,4 +1387,104 @@ void HM01B0::processDMAInterrupt() {
     }
   }
   //DebugDigitalWrite(OV7670_DEBUG_PIN_3, LOW);
+}
+
+typedef struct {
+  const __FlashStringHelper *reg_name;
+  uint16_t reg;
+} HM01B0_TO_NAME_t;
+
+static const HM01B0_TO_NAME_t hm01b0_reg_name_table[] PROGMEM {
+    {F("MODEL_ID_H"), 0x0000},
+    {F("MODEL_ID_L"), 0x0001},
+    {F("FRAME_COUNT"), 0x0005},
+    {F("PIXEL_ORDER"), 0x0006},
+    {F("MODE_SELECT"), 0x0100},
+    {F("IMG_ORIENTATION"), 0x0101},
+    {F("SW_RESET"), 0x0103},
+    {F("GRP_PARAM_HOLD"), 0x0104},
+    {F("INTEGRATION_H"), 0x0202},
+    {F("INTEGRATION_L"), 0x0203},
+    {F("ANALOG_GAIN"), 0x0205},
+    {F("DIGITAL_GAIN_H"), 0x020E},
+    {F("DIGITAL_GAIN_L"), 0x020F},
+    {F("FRAME_LEN_LINES_H"), 0x0340},
+    {F("FRAME_LEN_LINES_L"), 0x0341},
+    {F("LINE_LEN_PCK_H"), 0x0342},
+    {F("LINE_LEN_PCK_L"), 0x0343},
+    {F("READOUT_X"), 0x0383},
+    {F("READOUT_Y"), 0x0387},
+    {F("BINNING_MODE"), 0x0390},
+    {F("TEST_PATTERN_MODE"), 0x0601},
+    {F("BLC_CFG"), 0x1000},
+    {F("BLC_TGT"), 0x1003},
+    {F("BLI_EN"), 0x1006},
+    {F("BLC2_TGT"), 0x1007},
+    {F("DPC_CTRL"), 0x1008},
+    {F("SINGLE_THR_HOT"), 0x100B},
+    {F("SINGLE_THR_COLD"), 0x100C},
+    {F("VSYNC_HSYNC_PIXEL_SHIFT_EN"), 0x1012},
+    {F("AE_CTRL"), 0x2100},
+    {F("AE_TARGET_MEAN"), 0x2101},
+    {F("AE_MIN_MEAN"), 0x2102},
+    {F("CONVERGE_IN_TH"), 0x2103},
+    {F("CONVERGE_OUT_TH"), 0x2104},
+    {F("MAX_INTG_H"), 0x2105},
+    {F("MAX_INTG_L"), 0x2106},
+    {F("MIN_INTG"), 0x2107},
+    {F("MAX_AGAIN_FULL"), 0x2108},
+    {F("MAX_AGAIN_BIN2"), 0x2109},
+    {F("MIN_AGAIN"), 0x210A},
+    {F("MAX_DGAIN"), 0x210B},
+    {F("MIN_DGAIN"), 0x210C},
+    {F("DAMPING_FACTOR"), 0x210D},
+    {F("FS_CTRL"), 0x210E},
+    {F("FS_60HZ_H"), 0x210F},
+    {F("FS_60HZ_L"), 0x2110},
+    {F("FS_50HZ_H"), 0x2111},
+    {F("FS_50HZ_L"), 0x2112},
+    {F("FS_HYST_TH"), 0x2113},
+    {F("MD_CTRL"), 0x2150},
+    {F("I2C_CLEAR"), 0x2153},
+    {F("WMEAN_DIFF_TH_H"), 0x2155},
+    {F("WMEAN_DIFF_TH_M"), 0x2156},
+    {F("WMEAN_DIFF_TH_L"), 0x2157},
+    {F("MD_THH"), 0x2158},
+    {F("MD_THM1"), 0x2159},
+    {F("MD_THM2"), 0x215A},
+    {F("MD_THL"), 0x215B},
+    {F("STATISTIC_CTRL"), 0x2000},
+    {F("MD_LROI_X_START_H"), 0x2011},
+    {F("MD_LROI_X_START_L"), 0x2012},
+    {F("MD_LROI_Y_START_H"), 0x2013},
+    {F("MD_LROI_Y_START_L"), 0x2014},
+    {F("MD_LROI_X_END_H"), 0x2015},
+    {F("MD_LROI_X_END_L"), 0x2016},
+    {F("MD_LROI_Y_END_H"), 0x2017},
+    {F("MD_LROI_Y_END_L"), 0x2018},
+    {F("MD_INTERRUPT"), 0x2160},
+    {F("QVGA_WIN_EN"), 0x3010},
+    {F("SIX_BIT_MODE_EN"), 0x3011},
+    {F("PMU_AUTOSLEEP_FRAMECNT"), 0x3020},
+    {F("ADVANCE_VSYNC"), 0x3022},
+    {F("ADVANCE_HSYNC"), 0x3023},
+    {F("EARLY_GAIN"), 0x3035},
+    {F("BIT_CONTROL"), 0x3059},
+    {F("OSC_CLK_DIV"), 0x3060},
+    {F("ANA_Register_11"), 0x3061},
+    {F("IO_DRIVE_STR"), 0x3062},
+    {F("IO_DRIVE_STR2"), 0x3063},
+    {F("ANA_Register_14"), 0x3064},
+    {F("OUTPUT_PIN_STATUS_CONTROL"), 0x3065},
+    {F("ANA_Register_17"), 0x3067},
+    {F("PCLK_POLARITY"), 0x3068}
+};
+
+void HM01B0::showRegisters(void)
+{
+    Serial.println("\n*** Camera Registers ***");
+    for (uint16_t ii = 0; ii < (sizeof(hm01b0_reg_name_table)/sizeof(hm01b0_reg_name_table[0])); ii++) {
+        uint8_t reg_value = cameraReadRegister(hm01b0_reg_name_table[ii].reg);
+        Serial.printf("%s(%x): %u(%x)\n", hm01b0_reg_name_table[ii].reg_name, hm01b0_reg_name_table[ii].reg, reg_value, reg_value);
+    }
 }

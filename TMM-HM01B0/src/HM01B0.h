@@ -108,6 +108,7 @@ class HM01B0
 	int reset();
 	uint8_t cameraReadRegister(uint16_t reg);
 	uint8_t cameraWriteRegister(uint16_t reg, uint8_t data) ;
+	void showRegisters(void);
 	int set_pixformat( pixformat_t pfmt);
 	uint8_t set_framesize(framesize_t framesize);
 	int set_framerate(int framerate);
@@ -133,7 +134,7 @@ class HM01B0
 	// Lets try a dma version.  Doing one DMA that is synchronous does not gain anything
 	// So lets have a start, stop... Have it allocate 2 frame buffers and it's own DMA 
 	// buffers, with the option of setting your own buffers if desired.
-	bool startReadFrameDMA(void(*callback)(void *frame_buffer)=nullptr, uint16_t *fb1=nullptr, uint16_t *fb2=nullptr);
+	bool startReadFrameDMA(void(*callback)(void *frame_buffer)=nullptr, uint8_t *fb1=nullptr, uint8_t *fb2=nullptr);
 	bool stopReadFrameDMA();
 	inline uint32_t frameCount() {return _dma_frame_count;}
 	inline void *frameBuffer() {return _dma_last_completed_frame;}
@@ -250,7 +251,7 @@ class HM01B0
 
 	void (*_callback)(void *frame_buffer) =nullptr ;
 	uint32_t  _dma_frame_count;
-	uint16_t *_dma_last_completed_frame;
+	uint8_t *_dma_last_completed_frame;
 	// TBD Allow user to set all of the buffers...
 
 	#if defined (ARDUINO_TEENSY_MICROMOD)
@@ -265,11 +266,11 @@ class HM01B0
 	uint16_t  _frame_col_index;  // which column we are in a row
 	uint16_t  _frame_row_index;  // which row
 	const uint16_t  _frame_ignore_cols = 4; // how many cols to ignore per row
-	uint16_t *_frame_buffer_1 = nullptr;
-	uint16_t *_frame_buffer_2 = nullptr;
-	uint16_t *_frame_buffer_pointer;
-	uint16_t *_frame_row_buffer_pointer; // start of the row
-	uint16_t _dma_index;
+	uint8_t *_frame_buffer_1 = nullptr;
+	uint8_t *_frame_buffer_2 = nullptr;
+	uint8_t *_frame_buffer_pointer;
+	uint8_t *_frame_row_buffer_pointer; // start of the row
+	uint8_t _dma_index;
 	enum {DMASTATE_INITIAL=0, DMASTATE_RUNNING, DMASTATE_STOP_REQUESTED, DMA_STATE_STOPPED};
 	volatile uint8_t _dma_state;
 	static void dmaInterrupt(); 

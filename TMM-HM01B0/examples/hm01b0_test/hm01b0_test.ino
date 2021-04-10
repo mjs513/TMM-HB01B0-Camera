@@ -63,7 +63,7 @@ uint16_t FRAME_WIDTH, FRAME_HEIGHT;
 uint8_t frameBuffer[(324) * 244];
 uint16_t imageBuffer[(324) * 244]; DMAMEM
 uint8_t sendImageBuf[(324) * 244 * 2];
-uint16_t imageBuffer2[(324) * 244] DMAMEM;
+uint8_t frameBuffer2[(324) * 244] DMAMEM;
 
 bool g_continuous_mode = false;
 bool g_continuous_pc_mode = false;
@@ -182,6 +182,7 @@ void setup()
   Serial.println("Send the 'p' character to snapshot to PC on USB1");
   Serial.println("Send the 'd' character to read a frame using DMA ...");
   Serial.println("Send the 'b' character to save snapshot (BMP) to SD Card");
+  Serial.println("send the 'r' Show Camera register settings");
   Serial.println("Send the '0' character to blank the display");
   Serial.println();
 
@@ -194,7 +195,13 @@ uint16_t *last_dma_frame_buffer = nullptr;
 
 void hm01b0_dma_callback(void *pfb) {
   //Serial.printf("Callback: %x\n", (uint32_t)pfb);
-  tft.writeRect(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint16_t*)pfb);
+  uint8_t *pframeBuffer = (uint8_t*)pfb;
+  for(int i = 0; i < FRAME_HEIGHT*FRAME_WIDTH; i++) {
+    uint8_t b = *pframeBuffer++;
+    imageBuffer[i] = color565(b, b, b);
+  }
+  tft.writeRect(0, 0, tft.width(), tft.height(), imageBuffer);
+
   tft.updateScreenAsync();
 
   last_dma_frame_buffer = (uint16_t*)pfb;
@@ -238,6 +245,7 @@ void loop()
       }
       case 'p':
       {
+#if defined(USB_DUAL_SERIAL) || defined(USB_TRIPLE_SERIAL)
           calAE();
           memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
           hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
@@ -253,6 +261,9 @@ void loop()
           Serial.println("Image Sent!");
           ch = ' ';
           g_continuous_mode = false;
+#else 
+          Serial.println("*** Only works in USB Dual or Tripple Serial Mode ***");
+#endif          
           break;
       }
       case 'b':
@@ -276,7 +287,7 @@ void loop()
             tft.useFrameBuffer(false);
             g_dma_mode = false;
           } else {
-            hm01b0.startReadFrameDMA(&hm01b0_dma_callback, imageBuffer, imageBuffer2);
+            hm01b0.startReadFrameDMA(&hm01b0_dma_callback, frameBuffer, frameBuffer2);
             Serial.println("*** Return from startReadFrameDMA ***");
             tft.useFrameBuffer(true);
             //        tft.updateScreenAsync(true);
@@ -285,7 +296,11 @@ void loop()
           }
           break;
         }
-       case '0':
+      case 'r':
+        hm01b0.showRegisters();
+        break;
+
+      case '0':
        {
           tft.fillScreen(TFT_BLACK);
        }
@@ -323,11 +338,13 @@ void calAE(){
   }
 }
 
+#if defined(USB_DUAL_SERIAL) || defined(USB_TRIPLE_SERIAL)
 void send_raw() {
   uint32_t imagesize;
   imagesize = (FRAME_WIDTH * FRAME_HEIGHT * 2);
   SerialUSB1.write(sendImageBuf, imagesize); // set Tools > USB Type to "Dual Serial"
 }
+#endif
 
 char name[] = "9px_0000.bmp";       // filename convention (will auto-increment)
 void save_image_SD(){
