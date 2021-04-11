@@ -28,8 +28,8 @@ SDA             18      AD_B1_1 I2C
 #include <SPI.h>
 
 HM01B0 hm01b0;
-#define USE_SPARKFUN 1
-#define USE_SDCARD 1
+//#define USE_SPARKFUN 1
+//#define USE_SDCARD 1
 File file;
 
 #define TFT_DC  1   // "TX1" on left side of Sparkfun ML Carrier
@@ -67,24 +67,9 @@ uint8_t frameBuffer2[(324) * 244] DMAMEM;
 
 bool g_continuous_mode = false;
 bool g_continuous_pc_mode = false;
-bool g_info_mode = false;
-uint32_t ms_pc_mode = 0;
 bool g_dma_mode = false;
 
 ae_cfg_t aecfg;
-
-IntervalTimer clocked1s;
-bool info_now = false;
-uint32_t info_dps = 0; // DMA CB/sec
-uint32_t info_lps = 0; // loop/sec
-uint32_t info_idle = 0; // count idle seconds to blank display
-void clock_isr() {
-  info_idle++;
-  if ( g_info_mode )
-    info_now = true;
-}
-
-
 
 void setup()
 {
@@ -112,8 +97,8 @@ void setup()
   Serial.begin(9600);
 
 #if defined(USE_SDCARD)
-  Serial.println("Using SDCARD - Initializing");
-  if (!SD.begin(10)) {
+    Serial.println("Using SDCARD - Initializing");
+    if (!SD.begin(10)) {
     Serial.println("initialization failed!");
     //while (1){
     //    LEDON; delay(100);
@@ -124,7 +109,7 @@ void setup()
   delay(100);
 #endif
 
-
+  
   while (!Serial) ;
   Serial.println("HM01B0 Camera Test");
   Serial.println("------------------");
@@ -137,11 +122,11 @@ void setup()
 
   uint16_t ModelID;
   ModelID = hm01b0.get_modelid();
-  if (ModelID == 0x01B0) {
+  if(ModelID == 0x01B0){
     Serial.printf("SENSOR DETECTED :-) MODEL HM0%X\n", ModelID);
   } else {
     Serial.println("SENSOR NOT DETECTED! :-(");
-    while (1) {}
+    while(1){}
   }
 
   /*
@@ -152,16 +137,16 @@ void setup()
    * FRAMESIZE_320X320,  // 320x320
    */
   uint8_t status;
-#if defined(USE_SPARKFUN)
-  status = hm01b0.loadSettings(LOAD_SHM01B0INIT_REGS);  //hangs the TMM.
-#else
-  status = hm01b0.loadSettings(LOAD_DEFAULT_REGS);
-  status = hm01b0.set_framesize(FRAMESIZE_QVGA);
-#endif
-
-  if (status != 0) {
+  #if defined(USE_SPARKFUN)
+    status = hm01b0.loadSettings(LOAD_SHM01B0INIT_REGS);  //hangs the TMM.
+  #else  
+    status = hm01b0.loadSettings(LOAD_DEFAULT_REGS);
+    status = hm01b0.set_framesize(FRAMESIZE_QVGA);
+  #endif
+  
+  if(status != 0) {
     Serial.println("Settings failed to load");
-    while (1) {}
+    while(1){}
   }
   hm01b0.set_framerate(30);  //15, 30, 60, 120
   hm01b0.set_pixformat(PIXFORMAT_GRAYSCALE);
@@ -179,7 +164,7 @@ void setup()
   hm01b0.set_auto_exposure(true, 250);
   hm01b0.cmdUpdate();  //only need after changing auto exposure settings
 
-  hm01b0.set_mode(HIMAX_MODE_STREAMING, 0); // turn on, continuous streaming mode
+  hm01b0.set_mode(HIMAX_MODE_STREAMING,0); // turn on, continuous streaming mode
 
   uint32_t pixClk;
   hm01b0.get_vt_pix_clk(&pixClk);
@@ -195,26 +180,23 @@ void setup()
   Serial.println("Send the 's' character to read a frame ...");
   Serial.println("Send the 'c' character to start/stop continuous display mode");
   Serial.println("Send the 'p' character to snapshot to PC on USB1");
-  Serial.println("Send the 'P' Continuous snapshot to PC on USB1");
   Serial.println("Send the 'd' character to read a frame using DMA ...");
   Serial.println("Send the 'b' character to save snapshot (BMP) to SD Card");
   Serial.println("send the 'r' Show Camera register settings");
   Serial.println("Send the '0' character to blank the display");
-  Serial.println("Send the 'i' toggle perf info");
   Serial.println();
 
   //hm01b0.loadSettings(LOAD_WALKING1S_REG);
   //hm01b0.set_colorbar(true);
-  clocked1s.begin(clock_isr, 1'000'000);
+  
 }
 
 uint16_t *last_dma_frame_buffer = nullptr;
-uint8_t *pframeBuffer = nullptr;
 
 void hm01b0_dma_callback(void *pfb) {
   //Serial.printf("Callback: %x\n", (uint32_t)pfb);
-  pframeBuffer = (uint8_t*)pfb;
-  for (int i = 0; i < FRAME_HEIGHT * FRAME_WIDTH; i++) {
+  uint8_t *pframeBuffer = (uint8_t*)pfb;
+  for(int i = 0; i < FRAME_HEIGHT*FRAME_WIDTH; i++) {
     uint8_t b = *pframeBuffer++;
     imageBuffer[i] = color565(b, b, b);
   }
@@ -223,180 +205,118 @@ void hm01b0_dma_callback(void *pfb) {
   tft.updateScreenAsync();
 
   last_dma_frame_buffer = (uint16_t*)pfb;
-  info_dps++;
 }
 
 
 void loop()
 {
-  info_lps++;
-  if ( info_now ) {
-    Serial.print( "Loops/sec:");
-    Serial.print( info_lps );
-    Serial.print('\t');
-    Serial.print( "DMA CB/sec:");
-    Serial.print( info_dps );
-    Serial.println();
-    info_lps = 0;
-    info_dps = 0;
-    info_now = false;
-  }
   if (Serial.available()) {
-    info_idle = 0;
     int ch = Serial.read();
     while (Serial.read() != -1); // get rid of the rest...
     switch (ch) {
-    case 's':
-    {
-      tft.fillScreen(TFT_BLACK);
-      calAE();
-      Serial.println("Reading frame");
-      memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-      hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-      hm01b0.readFrame(frameBuffer);
-      Serial.println("Finished reading frame"); Serial.flush();
-      //convert grayscale to rgb
-      for (int i = 0; i < FRAME_HEIGHT * FRAME_WIDTH; i++) {
-        imageBuffer[i] = color565(frameBuffer[i], frameBuffer[i], frameBuffer[i]);
+      case 's':
+       {
+          tft.fillScreen(TFT_BLACK);
+          calAE();
+          Serial.println("Reading frame");
+          memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
+          hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
+          hm01b0.readFrame(frameBuffer);
+          Serial.println("Finished reading frame"); Serial.flush();
+          //convert grayscale to rgb
+          for(int i = 0; i < FRAME_HEIGHT*FRAME_WIDTH; i++) {
+            imageBuffer[i] = color565(frameBuffer[i], frameBuffer[i], frameBuffer[i]);
+          }
+          tft.writeRect(0, 0, tft.width(), tft.height(), imageBuffer);
+          ch = ' ';
+          g_continuous_mode = false;
+          break;
+        }
+      case 'c':
+      {
+        if (g_continuous_mode) {
+          g_continuous_mode = false;
+          Serial.println("*** Continuous mode turned off");
+        } else {
+          g_continuous_mode = true;
+          Serial.println("*** Continuous mode turned on");
+        }
+        break;
       }
-      tft.writeRect(0, 0, tft.width(), tft.height(), imageBuffer);
-      ch = ' ';
-      g_continuous_mode = false;
-      break;
-    }
-    case 'c':
-    {
-      if (g_continuous_mode) {
-        g_continuous_mode = false;
-        Serial.println("*** Continuous mode turned off");
-      } else  if (g_dma_mode) {
-        Serial.println("*** Turn off DMA mode first!");
-      }
-      else {
-        g_continuous_mode = true;
-        Serial.println("*** Continuous mode turned on");
-      }
-      break;
-    }
-    case 'p':
-    {
+      case 'p':
+      {
 #if defined(USB_DUAL_SERIAL) || defined(USB_TRIPLE_SERIAL)
-      //calAE();
-      if ( !g_dma_mode ) {
+          calAE();
+          memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
+          hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
+          hm01b0.readFrame(frameBuffer);
+          uint32_t idx = 0;
+          for(int i = 0; i < FRAME_HEIGHT*FRAME_WIDTH; i++) {
+            idx = i*2;
+            imageBuffer[i] = color565(frameBuffer[i], frameBuffer[i], frameBuffer[i]);
+            sendImageBuf[idx+1] = (imageBuffer[i] >> 0) & 0xFF;
+            sendImageBuf[idx] = (imageBuffer[i] >> 8) & 0xFF;
+          }
+          send_raw();
+          Serial.println("Image Sent!");
+          ch = ' ';
+          g_continuous_mode = false;
+#else 
+          Serial.println("*** Only works in USB Dual or Tripple Serial Mode ***");
+#endif          
+          break;
+      }
+      case 'b':
+       {
+        #if defined(USE_SDCARD)
+          calAE();
+          memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
+          hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
+          hm01b0.readFrame(frameBuffer);
+          save_image_SD();
+        #endif
+          break;
+       }
+      case 'd':
+        {
+          if (g_dma_mode) {
+            Serial.println("*** stopReadFrameDMA ***");
+            hm01b0.stopReadFrameDMA();
+            Serial.println("*** return from stopReadFrameDMA ***");
+            tft.endUpdateAsync();
+            tft.useFrameBuffer(false);
+            g_dma_mode = false;
+          } else {
+            hm01b0.startReadFrameDMA(&hm01b0_dma_callback, frameBuffer, frameBuffer2);
+            Serial.println("*** Return from startReadFrameDMA ***");
+            tft.useFrameBuffer(true);
+            //        tft.updateScreenAsync(true);
+            //        Serial.println("*** Return from updateScreenAsync ***");
+            g_dma_mode = true;
+          }
+          break;
+        }
+      case 'r':
+        hm01b0.showRegisters();
+        break;
+
+      case '0':
+       {
+          tft.fillScreen(TFT_BLACK);
+       }
+     }
+  }
+
+
+  if(g_continuous_mode){ 
         memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
         hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
         hm01b0.readFrame(frameBuffer);
-        uint32_t idx = 0;
-        for (int i = 0; i < FRAME_HEIGHT * FRAME_WIDTH; i++) {
-          idx = i * 2;
+        for(int i = 0; i < FRAME_HEIGHT*FRAME_WIDTH; i++) {
           imageBuffer[i] = color565(frameBuffer[i], frameBuffer[i], frameBuffer[i]);
-          sendImageBuf[idx + 1] = (imageBuffer[i] >> 0) & 0xFF;
-          sendImageBuf[idx] = (imageBuffer[i] >> 8) & 0xFF;
         }
-        send_raw();
-        Serial.println("Image Sent!");
-        ch = ' ';
-      }
-      else {
-        Serial.println("*** Turn off DMA mode first!");
-      }
-      g_continuous_pc_mode = false;
-#else
-      Serial.println("*** Only works in USB Dual or Tripple Serial Mode ***");
-#endif
-      break;
-    }
-    case 'P':
-    {
-      if ( !g_dma_mode ) {
-        g_continuous_pc_mode = !g_continuous_pc_mode;
-        ms_pc_mode = millis() + 20000;
-      }
-      else {
-        Serial.println("*** Turn off DMA mode first!");
-      }
-      break;
-    }
-    case 'i':
-    {
-      g_info_mode = !g_info_mode;
-      break;
-    }
-    case 'b':
-    {
-#if defined(USE_SDCARD)
-      calAE();
-      memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-      hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-      hm01b0.readFrame(frameBuffer);
-      save_image_SD();
-#endif
-      break;
-    }
-    case 'd':
-    {
-      if (g_dma_mode) {
-        Serial.println("*** stopReadFrameDMA ***");
-        hm01b0.stopReadFrameDMA();
-        Serial.println("*** return from stopReadFrameDMA ***");
-        tft.endUpdateAsync();
-        tft.useFrameBuffer(false);
-        g_dma_mode = false;
-      } else {
-        g_continuous_mode = false;
-        g_continuous_pc_mode = false;
-        hm01b0.startReadFrameDMA(&hm01b0_dma_callback, frameBuffer, frameBuffer2);
-        Serial.println("*** Return from startReadFrameDMA ***");
-        tft.useFrameBuffer(true);
-        //        tft.updateScreenAsync(true);
-        //        Serial.println("*** Return from updateScreenAsync ***");
-        g_dma_mode = true;
-      }
-      break;
-    }
-    case 'r':
-      hm01b0.showRegisters();
-      break;
-
-    case '0':
-    {
-      tft.fillScreen(TFT_BLACK);
-    }
-    }
+        tft.writeRect(0, 0, tft.width(), tft.height(), imageBuffer);
   }
-  if (info_idle > 600) {
-    tft.fillScreen(TFT_BLACK);
-    info_idle = 0;
-  }
-
-  if (g_continuous_mode) {
-    memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-    hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-    hm01b0.readFrame(frameBuffer);
-    for (int i = 0; i < FRAME_HEIGHT * FRAME_WIDTH; i++) {
-      imageBuffer[i] = color565(frameBuffer[i], frameBuffer[i], frameBuffer[i]);
-    }
-    tft.writeRect(0, 0, tft.width(), tft.height(), imageBuffer);
-  }
-
-#if defined(USB_DUAL_SERIAL) || defined(USB_TRIPLE_SERIAL)
-  if (g_continuous_pc_mode && (millis() - ms_pc_mode > 1600) ) {
-    ms_pc_mode = millis();
-    send_raw();
-    Serial.println("Prior Image Sent! Took a new one.");
-    //calAE();
-    memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-    hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-    hm01b0.readFrame(frameBuffer);
-    uint32_t idx = 0;
-    for (int i = 0; i < FRAME_HEIGHT * FRAME_WIDTH; i++) {
-      idx = i * 2;
-      imageBuffer[i] = color565(frameBuffer[i], frameBuffer[i], frameBuffer[i]);
-      sendImageBuf[idx + 1] = (imageBuffer[i] >> 0) & 0xFF;
-      sendImageBuf[idx] = (imageBuffer[i] >> 8) & 0xFF;
-    }
-  }
-#endif
 
 }
 
@@ -406,13 +326,13 @@ uint16_t color565(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 
-void calAE() {
+void calAE(){
   // Calibrate Autoexposure
-  Serial.println("Calibrating Auto Exposure...");
+  Serial.println("Calibrating Auto Exposure..."); 
   memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-  if (hm01b0.cal_ae(10, frameBuffer, FRAME_WIDTH * FRAME_HEIGHT, &aecfg) != HM01B0_ERR_OK) {
-    Serial.println("\tnot converged");
-  } else {
+  if(hm01b0.cal_ae(10, frameBuffer, FRAME_WIDTH*FRAME_HEIGHT, &aecfg) != HM01B0_ERR_OK){
+    Serial.println("\tnot converged"); 
+  }else{
     Serial.println("\tconverged!");
     hm01b0.cmdUpdate();
   }
@@ -427,25 +347,25 @@ void send_raw() {
 #endif
 
 char name[] = "9px_0000.bmp";       // filename convention (will auto-increment)
-void save_image_SD() {
+void save_image_SD(){
   uint8_t r, g, b;
   uint32_t x, y;
 
   Serial.println("Writing BMP to SD CARD");
   Serial.println(name);
-
+  
   // if name exists, create new filename, SD.exists(filename)
-  for (int i = 0; i < 10000; i++) {
-    name[4] = (i / 1000) % 10 + '0'; // thousands place
-    name[5] = (i / 100) % 10 + '0'; // hundreds
-    name[6] = (i / 10) % 10 + '0';  // tens
-    name[7] = i % 10 + '0';         // ones
-    if (!SD.exists(name)) {
-      Serial.println(name);
-      file = SD.open(name, FILE_WRITE);
-      break;
+    for (int i=0; i<10000; i++) {
+      name[4] = (i/1000)%10 + '0';    // thousands place
+      name[5] = (i/100)%10 + '0';     // hundreds
+      name[6] = (i/10)%10 + '0';      // tens
+      name[7] = i%10 + '0';           // ones
+      if(!SD.exists(name)){
+        Serial.println(name);
+        file = SD.open(name, FILE_WRITE);
+        break;
+      }
     }
-  }
 
   uint16_t w = FRAME_WIDTH;
   uint16_t h = FRAME_HEIGHT;
@@ -453,36 +373,36 @@ void save_image_SD() {
   unsigned char *img = NULL;
 
   // set fileSize (used in bmp header)
-  int rowSize = 4 * ((3 * w + 3) / 4);  // how many bytes in the row (used to create padding)
-  int fileSize = 54 + h * rowSize;      // headers (54 bytes) + pixel data
+  int rowSize = 4 * ((3*w + 3)/4);      // how many bytes in the row (used to create padding)
+  int fileSize = 54 + h*rowSize;        // headers (54 bytes) + pixel data
 
-  img = (unsigned char *)malloc(3 * w * h);
-
-  for (int i = 0; i < w; i++)
+  img = (unsigned char *)malloc(3*w*h);
+  
+  for(int i=0; i<w; i++)
   {
-    for (int j = 0; j < h; j++)
+    for(int j=0; j<h; j++)
     {
       //r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3
-      x = i; y = (h - 1) - j;
+      x=i; y=(h-1)-j;
+            
+      r = frameBuffer[(x+y*w)]    ;
+      g = frameBuffer[(x+y*w)]    ;
+      b = frameBuffer[(x+y*w)]    ;
 
-      r = frameBuffer[(x + y * w)]    ;
-      g = frameBuffer[(x + y * w)]    ;
-      b = frameBuffer[(x + y * w)]    ;
-
-      img[(x + y * w) * 3 + 2] = (unsigned char)(r);
-      img[(x + y * w) * 3 + 1] = (unsigned char)(g);
-      img[(x + y * w) * 3 + 0] = (unsigned char)(b);
+      img[(x+y*w)*3+2] = (unsigned char)(r);
+      img[(x+y*w)*3+1] = (unsigned char)(g);
+      img[(x+y*w)*3+0] = (unsigned char)(b);
     }
   }
 
   // create padding (based on the number of pixels in a row
-  unsigned char bmpPad[rowSize - 3 * w];
-  for (int i = 0; i < (int)(sizeof(bmpPad)); i++) {      // fill with 0s
+  unsigned char bmpPad[rowSize - 3*w];
+  for (int i=0; i< (int)(sizeof(bmpPad)); i++) {         // fill with 0s
     bmpPad[i] = 0;
   }
 
-  unsigned char bmpFileHeader[14] = {'B', 'M', 0, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0};
-  unsigned char bmpInfoHeader[40] = {40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 24, 0};
+  unsigned char bmpFileHeader[14] = {'B','M', 0,0,0,0, 0,0, 0,0, 54,0,0,0};
+  unsigned char bmpInfoHeader[40] = {40,0,0,0, 0,0,0,0, 0,0,0,0, 1,0, 24,0};
 
   bmpFileHeader[ 2] = (unsigned char)(fileSize      );
   bmpFileHeader[ 3] = (unsigned char)(fileSize >>  8);
@@ -490,21 +410,21 @@ void save_image_SD() {
   bmpFileHeader[ 5] = (unsigned char)(fileSize >> 24);
 
   bmpInfoHeader[ 4] = (unsigned char)(       w    );
-  bmpInfoHeader[ 5] = (unsigned char)(       w >> 8);
-  bmpInfoHeader[ 6] = (unsigned char)(       w >> 16);
-  bmpInfoHeader[ 7] = (unsigned char)(       w >> 24);
+  bmpInfoHeader[ 5] = (unsigned char)(       w>> 8);
+  bmpInfoHeader[ 6] = (unsigned char)(       w>>16);
+  bmpInfoHeader[ 7] = (unsigned char)(       w>>24);
   bmpInfoHeader[ 8] = (unsigned char)(       h    );
-  bmpInfoHeader[ 9] = (unsigned char)(       h >> 8);
-  bmpInfoHeader[10] = (unsigned char)(       h >> 16);
-  bmpInfoHeader[11] = (unsigned char)(       h >> 24);
+  bmpInfoHeader[ 9] = (unsigned char)(       h>> 8);
+  bmpInfoHeader[10] = (unsigned char)(       h>>16);
+  bmpInfoHeader[11] = (unsigned char)(       h>>24);
 
   // write the file (thanks forum!)
   file.write(bmpFileHeader, sizeof(bmpFileHeader));    // write file header
   file.write(bmpInfoHeader, sizeof(bmpInfoHeader));    // " info header
 
-  for (int i = 0; i < h; i++) {                        // iterate image array
-    file.write(img + (FRAME_WIDTH * (FRAME_HEIGHT - i - 1) * 3), 3 * FRAME_WIDTH);    // write px data
-    file.write(bmpPad, (4 - (FRAME_WIDTH * 3) % 4) % 4);         // and padding as needed
+  for (int i=0; i<h; i++) {                            // iterate image array
+    file.write(img+(FRAME_WIDTH*(FRAME_HEIGHT-i-1)*3), 3*FRAME_WIDTH);                // write px data
+    file.write(bmpPad, (4-(FRAME_WIDTH*3)%4)%4);                 // and padding as needed
   }
   free(img);
   file.close();                                        // close file when done writing
