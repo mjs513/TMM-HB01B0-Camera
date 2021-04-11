@@ -534,13 +534,13 @@ uint8_t HM01B0::set_framesize(framesize_t new_framesize)
 
     switch (framesize) {
         case FRAMESIZE_320X320:
-			w = 320; h = 320;  //324, 244
+			w = 320; h = 320;
             for (int i=0; FULL_regs[i][0] && ret == 0; i++) {
                 ret |=  cameraWriteRegister(FULL_regs[i][0], FULL_regs[i][1]);  //cambus_writeb2(&sensor->bus, sensor->slv_addr, FULL_regs[i][0], FULL_regs[i][1]
             }
             break;
         case FRAMESIZE_QVGA:
-			w = 320; h = 240;
+			w = 324; h = 244;
             for (int i=0; QVGA_regs[i][0] && ret == 0; i++) {
                 ret |= cameraWriteRegister( QVGA_regs[i][0], QVGA_regs[i][1]);
             }
@@ -560,7 +560,6 @@ uint8_t HM01B0::set_framesize(framesize_t new_framesize)
             ret = -1;
             
     }
-
     return ret;
 }
 
@@ -862,14 +861,18 @@ uint8_t HM01B0::loadSettings(camera_reg_settings_t settings)
 
 void HM01B0::readFrame(void* buffer)
 {
-//uint32_t ulPin = 33; // P1.xx set of GPIO is in 'pin' 32 and above
-//NRF_GPIO_Type * port;
-
-  //port = nrf_gpio_pin_port_decode(&ulPin);
 
   uint8_t* b = (uint8_t*)buffer;
-  int bytesPerRow = w ;
- bool _grayscale = (pixformat == PIXFORMAT_GRAYSCALE);
+  bool _grayscale;
+  int bytesPerRow;
+  //Change for Monodchrome only Sparkfun HB01b0
+  #if defined(SensorMonochrome) 
+	_grayscale = false;
+	bytesPerRow = w ;
+  #else
+	_grayscale = (pixformat == PIXFORMAT_GRAYSCALE);
+	bytesPerRow = w * 2;
+  #endif
 
   // Falling edge indicates start of frame
   //pinMode(PCLK_PIN, INPUT); // make sure back to input pin...
@@ -1070,6 +1073,9 @@ int HM01B0::init()
 	analogWriteFrequency(MCLK_PIN, OMV_XCLK_FREQUENCY);
 	analogWrite(MCLK_PIN, 128);
 	delay(5);
+	
+    set_pixformat(PIXFORMAT_GRAYSCALE);    //Sparkfun camera only supports grayscale
+	
 	//set_mode(HIMAX_MODE_STREAMING,0);
 		
     return 0;

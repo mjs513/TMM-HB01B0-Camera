@@ -43,12 +43,8 @@ SOFTWARE.
 
 typedef enum {
     PIXFORMAT_INVALID = 0,
-    PIXFORMAT_BINARY,    // 1BPP/BINARY
     PIXFORMAT_GRAYSCALE, // 1BPP/GRAYSCALE
-    PIXFORMAT_RGB565,    // 2BPP/RGB565
-    PIXFORMAT_YUV422,    // 2BPP/YUV422
     PIXFORMAT_BAYER,     // 1BPP/RAW
-    PIXFORMAT_JPEG,      // JPEG/COMPRESSED
 } pixformat_t;
 
 typedef enum {
@@ -265,7 +261,7 @@ class HM01B0
 	uint16_t  _save_lsb;
 	uint16_t  _frame_col_index;  // which column we are in a row
 	uint16_t  _frame_row_index;  // which row
-	const uint16_t  _frame_ignore_cols = 4; // how many cols to ignore per row
+	const uint16_t  _frame_ignore_cols = 0; // how many cols to ignore per row
 	uint8_t *_frame_buffer_1 = nullptr;
 	uint8_t *_frame_buffer_2 = nullptr;
 	uint8_t *_frame_buffer_pointer;
