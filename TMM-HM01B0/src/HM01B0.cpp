@@ -1604,6 +1604,67 @@ void HM01B0::processDMAInterrupt() {
 }
 
 typedef struct {
+    uint32_t frameTimeMicros;
+    uint16_t vsyncStartCycleCount;
+    uint16_t vsyncEndCycleCount;
+    uint16_t hrefCount;
+    uint32_t cycleCount;
+    uint16_t pclkCounts[350]; // room to spare.
+    uint32_t hrefStartTime[350];
+    uint16_t pclkNoHrefCount;
+} frameStatics_t;
+
+frameStatics_t fstat;
+
+void HM01B0::captureFrameStatistics()
+{
+   memset((void*)&fstat, 0, sizeof(fstat));
+
+   // lets wait for the vsync to go high;
+    while ((*_vsyncPort & _vsyncMask) != 0); // wait for HIGH
+
+    // now lets wait for it to go low    
+    while ((*_vsyncPort & _vsyncMask) == 0) fstat.vsyncStartCycleCount ++; // wait for LOW
+
+    while ((*_hrefPort & _hrefMask) == 0); // wait for HIGH
+    while ((*_pclkPort & _pclkMask) != 0); // wait for LOW
+
+    uint32_t microsStart = micros();
+    // now loop through until we get the next _vsynd
+    // BUGBUG We know that HSYNC and PCLK on same GPIO VSYNC is not...
+    uint32_t regs_prev = 0;
+    //noInterrupts();
+    while ((*_vsyncPort & _vsyncMask) != 0) {
+
+        fstat.cycleCount++;
+        uint32_t regs = (*_hrefPort & (_hrefMask | _pclkMask ));
+        if (regs != regs_prev) {
+            if ((regs & _hrefMask) && ((regs_prev & _hrefMask) ==0)) {
+                fstat.hrefCount++;
+                fstat.hrefStartTime[fstat.hrefCount] = micros();
+            }
+            if ((regs & _pclkMask) && ((regs_prev & _pclkMask) ==0)) fstat.pclkCounts[fstat.hrefCount]++;
+            if ((regs & _pclkMask) && ((regs_prev & _hrefMask) ==0)) fstat.pclkNoHrefCount++;
+            regs_prev = regs;
+        }
+    }
+    while ((*_vsyncPort & _vsyncMask) == 0) fstat.vsyncEndCycleCount++; // wait for LOW
+    //interrupts();
+    fstat.frameTimeMicros = micros() - microsStart;
+
+    // Maybe return data. print now
+    Serial.printf("*** Frame Capture Data: elapsed Micros: %u loops: %u\n", fstat.frameTimeMicros, fstat.cycleCount);
+    Serial.printf("   VSync Loops Start: %u end: %u\n", fstat.vsyncStartCycleCount, fstat.vsyncEndCycleCount);
+    Serial.printf("   href count: %u pclk ! href count: %u\n    ", fstat.hrefCount,  fstat.pclkNoHrefCount);
+    for (uint16_t ii=0; ii < fstat.hrefCount + 1; ii++) {
+        Serial.printf("%3u(%u) ", fstat.pclkCounts[ii], (ii==0)? 0 : fstat.hrefStartTime[ii] - fstat.hrefStartTime[ii-1]);
+        if (!(ii & 0x0f)) Serial.print("\n    ");
+    }
+    Serial.println();
+}
+
+
+typedef struct {
   const __FlashStringHelper *reg_name;
   uint16_t reg;
 } HM01B0_TO_NAME_t;

@@ -135,6 +135,7 @@ class HM01B0
 	bool stopReadFrameDMA();
 	inline uint32_t frameCount() {return _dma_frame_count;}
 	inline void *frameBuffer() {return _dma_last_completed_frame;}
+	void captureFrameStatistics();
 
 
 	int init();

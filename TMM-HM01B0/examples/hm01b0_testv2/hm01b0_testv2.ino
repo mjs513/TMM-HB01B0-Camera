@@ -211,6 +211,7 @@ void setup()
   Serial.println("Send the 'b' character to save snapshot (BMP) to SD Card");
   Serial.println("send the 'r' Show Camera register settings");
   Serial.println("send the 'v' Show VSYNCH Timing");
+  Serial.println("send the '?' character to show frame information");
   Serial.println("Send the '0' character to blank the display");
   Serial.println();
 
@@ -376,7 +377,9 @@ void loop()
       case 'r':
         hm01b0.showRegisters();
         break;
-
+        case '?':
+        hm01b0.captureFrameStatistics();
+        break;
       case '0':
        {
           tft.fillScreen(TFT_BLACK);
