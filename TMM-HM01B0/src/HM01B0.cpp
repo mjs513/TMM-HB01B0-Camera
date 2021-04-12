@@ -914,7 +914,153 @@ void HM01B0::readFrame(void* buffer)
 
    set_mode(HIMAX_MODE_STREAMING, 0);
 
+}
 
+
+static void flexio_configure()
+{
+	// do nothing is FlexIO already enabled, assume already set up
+	if ((CCM_CCGR3 & CCM_CCGR3_FLEXIO2(CCM_CCGR_ON)) != 0) return;
+
+	Serial.println("FlexIO Configure");
+	Serial.printf(" CCM_CSCMR2 = %08X\n", CCM_CSCMR2);
+	CCM_CSCMR2 |= CCM_CSCMR2_FLEXIO2_CLK_SEL(3); // 480 MHz from USB PLL
+
+	CCM_CS1CDR = (CCM_CS1CDR
+		& ~(CCM_CS1CDR_FLEXIO2_CLK_PRED(7) | CCM_CS1CDR_FLEXIO2_CLK_PODF(7)))
+		| CCM_CS1CDR_FLEXIO2_CLK_PRED(1) | CCM_CS1CDR_FLEXIO2_CLK_PODF(1);
+
+	uint32_t div1 = ((CCM_CS1CDR >> 9) & 7) + 1;
+	uint32_t div2 = ((CCM_CS1CDR >> 25) & 7) + 1;
+	Serial.printf(" div1 = %u, div2 = %u\n", div1, div2);
+	Serial.printf(" FlexIO2 Frequency = %.2f MHz\n", 480.0 / (float)div1 / (float)div2);
+
+	CCM_CCGR3 |= CCM_CCGR3_FLEXIO2(CCM_CCGR_ON);
+	Serial.printf(" CCM_CCGR3 = %08X\n", CCM_CCGR3);
+	Serial.printf(" FLEXIO2_CTRL = %08X\n", FLEXIO2_CTRL);
+
+	Serial.printf(" FlexIO2 Config, param=%08X\n", FLEXIO2_PARAM);
+
+	IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_00 = 4; // B1_00 = FlexIO2:16 = PCLK
+	IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_04 = 4; // B0_04 = FlexIO2:4  = D0
+	IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_05 = 4; // B0_05 = FlexIO2:5  = D1
+	IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_06 = 4; // B0_06 = FlexIO2:6  = D2
+	IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_07 = 4; // B0_07 = FlexIO2:7  = D3
+	IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_08 = 4; // B0_08 = FlexIO2:8  = D4
+	IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_09 = 4; // B0_09 = FlexIO2:9  = D5
+	IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_10 = 4; // B0_10 = FlexIO2:10 = D6
+	IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_11 = 4; // B0_11 = FlexIO2:11 = D7
+	IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_12 = 4; // B0_12 = FlexIO2:12 = HSYNC
+
+	// SHIFTCFG, page 2927
+	//  PWIDTH: number of bits to be shifted on each Shift clock
+	//          0 = 1 bit, 1-3 = 4 bit, 4-7 = 8 bit, 8-15 = 16 bit, 16-31 = 32 bit
+	//  INSRC: Input Source, 0 = pin, 1 = Shifter N+1 Output
+	//  SSTOP: Stop bit, 0 = disabled, 1 = match, 2 = use zero, 3 = use one
+	//  SSTART: Start bit, 0 = disabled, 1 = disabled, 2 = use zero, 3 = use one
+	FLEXIO2_SHIFTCFG3 = FLEXIO_SHIFTCFG_PWIDTH(7);
+
+	// SHIFTCTL, page 2926
+	//  TIMSEL: which Timer is used for controlling the logic/shift register
+	//  TIMPOL: 0 = shift of positive edge, 1 = shift on negative edge
+	//  PINCFG: 0 = output disabled, 1 = open drain, 2 = bidir, 3 = output
+	//  PINSEL: which pin is used by the Shifter input or output
+	//  PINPOL: 0 = active high, 1 = active low
+	//  SMOD: 0 = disable, 1 = receive, 2 = transmit, 4 = match store,
+	//        5 = match continuous, 6 = state machine, 7 = logic
+	FLEXIO2_SHIFTCTL3 = FLEXIO_SHIFTCTL_TIMSEL(2) | FLEXIO_SHIFTCTL_SMOD(1)
+		| FLEXIO_SHIFTCTL_PINSEL(4); // 4 = D0
+
+	// Timer model, pages 2891-2893
+	// TIMCMP, page 2937
+	FLEXIO2_TIMCMP2 = 7;
+
+	// TIMCFG, page 2935
+	//  TIMOUT: Output
+	//          0 = output is logic one when enabled and is not affected by timer reset
+	//          1 = output is logic zero when enabled and is not affected by timer reset
+	//          2 = output is logic one when enabled and on timer reset
+	//          3 = output is logic zero when enabled and on timer reset
+	//  TIMDEC: Decrement
+	//          0 = on FlexIO clock, Shift clock equals Timer output
+	//          1 = on Trigger input (both edges), Shift clock equals Timer output
+	//          2 = on Pin input (both edges), Shift clock equals Pin input
+	//          3 = on Trigger input (both edges), Shift clock equals Trigger input
+	//  TIMRST: Reset
+	//          0 = never reset
+	//          2 = on Timer Pin equal to Timer Output
+	//          3 = on Timer Trigger equal to Timer Output
+	//          4 = on Timer Pin rising edge
+	//          6 = on Trigger rising edge
+	//          7 = on Trigger rising or falling edge
+	//  TIMDIS: Disable
+	//          0 = never disabled
+	//          1 = disabled on Timer N-1 disable
+	//          2 = disabled on Timer compare
+	//          3 = on Timer compare and Trigger Low
+	//          4 = on Pin rising or falling edge
+	//          5 = on Pin rising or falling edge provided Trigger is high
+	//          6 = on Trigger falling edge
+	//  TIMENA
+	//          0 = always enabled
+	//          1 = enabled on Timer N-1 enable
+	//          2 = enabled on Trigger high
+	//          3 = enabled on Trigger high and Pin high
+	//          4 = enabled on Pin rising edge
+	//          5 = enabled on Pin rising edge and Trigger high
+	//          6 = enabled on Trigger rising edge
+	//          7 = enabled on Trigger rising or falling edge
+	//  TSTOP Stop bit, 0 = disabled, 1 = on compare, 2 = on disable, 3 = on either
+	//  TSTART: Start bit, 0 = disabled, 1 = enabled
+	FLEXIO2_TIMCFG2 = FLEXIO_TIMCFG_TIMOUT(1) | FLEXIO_TIMCFG_TIMDEC(2)
+		| FLEXIO_TIMCFG_TIMENA(6) | FLEXIO_TIMCFG_TIMDIS(6);
+
+	// TIMCTL, page 2933
+	//  TRGSEL: Trigger Select ....
+	//          4*N - Pin 2*N input
+	//          4*N+1 - Shifter N status flag
+	//          4*N+2 - Pin 2*N+1 input
+	//          4*N+3 - Timer N trigger output
+	//  TRGPOL: 0 = active high, 1 = active low
+	//  TRGSRC: 0 = external, 1 = internal
+	//  PINCFG: timer pin, 0 = disable, 1 = open drain, 2 = bidir, 3 = output
+	//  PINSEL: which pin is used by the Timer input or output
+	//  PINPOL: 0 = active high, 1 = active low
+	//  TIMOD: mode, 0 = disable, 1 = 8 bit baud rate, 2 = 8 bit PWM, 3 = 16 bit
+	FLEXIO2_TIMCTL2 = FLEXIO_TIMCTL_TIMOD(3)
+		| FLEXIO_TIMCTL_PINSEL(16) // "Pin" is 16 = PCLK
+		| FLEXIO_TIMCTL_TRGSEL(4 * (12/2)) // "Trigger" is 12 = HSYNC
+		| FLEXIO_TIMCTL_TRGSRC;
+
+	// CTRL, page 2916
+	FLEXIO2_CTRL = FLEXIO_CTRL_FLEXEN; // enable after everything configured
+
+	Serial.printf(" FLEXIO2_SHIFTCFG3 = %08X\n", FLEXIO2_SHIFTCFG3);
+	Serial.printf(" FLEXIO2_SHIFTCTL3 = %08X\n", FLEXIO2_SHIFTCTL3);
+	Serial.printf(" FLEXIO2_TIMCMP2 = %08X\n", FLEXIO2_TIMCMP2);
+	Serial.printf(" FLEXIO2_TIMCFG2 = %08X\n", FLEXIO2_TIMCFG2);
+	Serial.printf(" FLEXIO2_TIMCTL2 = %08X\n", FLEXIO2_TIMCTL2);
+}
+
+
+void HM01B0::readFrameFlexIO(void* buffer)
+{
+	flexio_configure(); // one-time hardware setup
+
+	// wait for VSYNC to be low
+	while ((*_vsyncPort & _vsyncMask) != 0);
+
+	uint32_t *p = (uint32_t *)buffer;
+	uint32_t *p_end = (uint32_t *)buffer + 324*244/4;
+
+	FLEXIO2_SHIFTSTAT = 0x08; // clear any prior shift status
+
+	while (p < p_end) {
+		while ((FLEXIO2_SHIFTSTAT & 0x08) == 0) {
+			// wait for FlexIO shifter data
+		}
+		*p++ = FLEXIO2_SHIFTBUF3; // should use DMA...
+	}
 }
 
 

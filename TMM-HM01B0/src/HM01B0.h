@@ -123,6 +123,7 @@ class HM01B0
 	uint8_t cmdUpdate();
 	uint8_t loadSettings(camera_reg_settings_t settings);
 	void readFrame(void* buffer);
+	void readFrameFlexIO(void* buffer);
 	uint8_t get_ae( ae_cfg_t *psAECfg);
 	uint8_t cal_ae( uint8_t CalFrames, uint8_t* Buffer, uint32_t ui32BufferLen, ae_cfg_t* pAECfg);
 	uint16_t get_modelid();
