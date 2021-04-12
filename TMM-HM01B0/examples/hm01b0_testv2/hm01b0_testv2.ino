@@ -58,8 +58,8 @@ File file;
 #define TFT_CS  4   // "CS" on left side of Sparkfun ML Carrier
 #define TFT_RST  0  // "RX1" on left side of Sparkfun ML Carrier
 
-#define TFT_ST7789 1
-//#define TFT_ILI9341 1
+//#define TFT_ST7789 1
+#define TFT_ILI9341 1
 
 #ifdef TFT_ST7789
 //ST7735 Adafruit 320x240 display
@@ -206,7 +206,8 @@ void setup()
   Serial.println("Send the 'f' character to read a frame using FlexIO (changes hardware setup!)");
   Serial.println("Send the 'c' character to start/stop continuous display mode");
   Serial.println("Send the 'p' character to snapshot to PC on USB1");
-  Serial.println("Send the 'd' character to read a frame using DMA ...");
+  Serial.println("Send the 'd' character to start/stop continuous display using DMA ...");
+  Serial.println("Send the 'D' character to read a singleframe using DMA ...");
   Serial.println("Send the 'b' character to save snapshot (BMP) to SD Card");
   Serial.println("send the 'r' Show Camera register settings");
   Serial.println("send the 'v' Show VSYNCH Timing");
@@ -223,8 +224,9 @@ void setup()
 
 uint16_t *last_dma_frame_buffer = nullptr;
 
-void hm01b0_dma_callback(void *pfb) {
+bool hm01b0_dma_callback(void *pfb) {
   //Serial.printf("Callback: %x\n", (uint32_t)pfb);
+  if (tft.asyncUpdateActive()) return false; // don't use if we are already busy
   uint8_t *pframeBuffer = (uint8_t*)pfb;
   for(int i = 0; i < FRAME_HEIGHT*FRAME_WIDTH; i++) {
     uint8_t b = *pframeBuffer++;
@@ -236,6 +238,7 @@ void hm01b0_dma_callback(void *pfb) {
   tft.updateScreenAsync();
 
   last_dma_frame_buffer = (uint16_t*)pfb;
+  return true;
 }
 
 
@@ -338,6 +341,17 @@ void loop()
             //        Serial.println("*** Return from updateScreenAsync ***");
             g_dma_mode = true;
           }
+          break;
+        }
+      case 'D':
+        {
+          hm01b0.startReadFrameDMA(nullptr, frameBuffer, frameBuffer2);
+          delay(50);
+          hm01b0.stopReadFrameDMA();
+          Serial.println("*** Return from startReadFrameDMA ***");
+          tft.setOrigin(-2, -2);
+          tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, frameBuffer, mono_palette);
+          tft.setOrigin(0, 0);        
           break;
         }
       case 'f':

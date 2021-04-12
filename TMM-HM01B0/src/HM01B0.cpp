@@ -1310,7 +1310,7 @@ void dumpDMA_TCD(DMABaseClass *dmabc)
 //===================================================================
 // Start a DMA operation -
 //===================================================================
-bool HM01B0::startReadFrameDMA(void(*callback)(void *frame_buffer), uint8_t *fb1, uint8_t *fb2)
+bool HM01B0::startReadFrameDMA(bool(*callback)(void *frame_buffer), uint8_t *fb1, uint8_t *fb2)
 {
   // First see if we need to allocate frame buffers.
   if (fb1) _frame_buffer_1 = fb1;
@@ -1410,7 +1410,7 @@ bool HM01B0::startReadFrameDMA(void(*callback)(void *frame_buffer), uint8_t *fb1
   _dma_frame_count = 0;
 
   // Now start an interrupt for start of frame. 
-  attachInterrupt(VSYNC_PIN, &frameStartInterrupt, FALLING);
+  attachInterrupt(VSYNC_PIN, &frameStartInterrupt, RISING);
 
   //DebugDigitalToggle(OV7670_DEBUG_PIN_1);
   return true;
@@ -1431,7 +1431,10 @@ bool HM01B0::stopReadFrameDMA()
   _dma_state = DMASTATE_STOP_REQUESTED;
 
   while ((em < 1000) && (_dma_state == DMASTATE_STOP_REQUESTED)) ; // wait up to a second...
-  if (_dma_state != DMA_STATE_STOPPED) Serial.println("stopReadFrameDMA DMA did not exit correctly...");
+  if (_dma_state != DMA_STATE_STOPPED) {
+    Serial.println("*** stopReadFrameDMA DMA did not exit correctly...");
+    Serial.printf("  Bytes Left: %u frame buffer:%x Row:%u Col:%u\n", _bytes_left_dma, (uint32_t)_frame_buffer_pointer, _frame_row_index, _frame_col_index);
+  }
   //DebugDigitalWrite(OV7670_DEBUG_PIN_2, LOW);
 
 #ifdef DEBUG_CAMERA
@@ -1509,7 +1512,7 @@ void HM01B0::processDMAInterrupt() {
     buffer_size = _dmasettings[1].TCD->CITER;
   }
   // lets try dumping a little data on 1st 2nd and last buffer.
-#ifdef DEBUG_CAMERA
+#ifdef DEBUG_CAMERA_VERBOSE
   if ((_dma_index < 3) || (buffer_size  < DMABUFFER_SIZE)) {
     Serial.printf("D(%d, %d, %lu) %u %u: ", _dma_index, buffer_size, _bytes_left_dma, pixformat, _grayscale);
     for (uint16_t i = 0; i < 8; i++) {
@@ -1528,46 +1531,41 @@ void HM01B0::processDMAInterrupt() {
   for (uint16_t buffer_index = 0; buffer_index < buffer_size; buffer_index++) {
     if (!_bytes_left_dma || (_frame_row_index >= h)) break;
 
-    // lets ignre the _hrefmask for now could check later...
-    if (!(*buffer & _hrefMask)) {
-    #ifdef DEBUG_CAMERA
-       Serial.printf("*NHREF (%d %d) %x ", _frame_row_index, _frame_col_index, *buffer);
-    #endif
-    } else {
-        // only process if href high...
-        uint16_t b = *buffer >> 4;
-        if (_frame_col_index < w) *_frame_buffer_pointer++ = b;
-        _frame_col_index++;
-        if (_frame_col_index == (w + _frame_ignore_cols)) {
-            // we just finished a row.
-            _frame_row_index++;
-            _frame_col_index = 0;
-            _frame_row_buffer_pointer += w; // point to start of new row of buffer...
-        }
-        _bytes_left_dma--; // for now assuming color 565 image...
+    // only process if href high...
+    uint16_t b = *buffer >> 4;
+    *_frame_buffer_pointer++ = b;
+    _frame_col_index++;
+    if (_frame_col_index == w) {
+        // we just finished a row.
+        _frame_row_index++;
+        _frame_col_index = 0;
     }
+    _bytes_left_dma--; // for now assuming color 565 image...
     buffer++;
   }
 
-  if (_frame_row_index == h) { // We finished a frame lets bail
+  if ((_frame_row_index == h) || (_bytes_left_dma == 0)) { // We finished a frame lets bail
     _dmachannel.disable();  // disable the DMA now...
     //DebugDigitalWrite(OV7670_DEBUG_PIN_2, LOW);
-#ifdef DEBUG_CAMERA
+#ifdef DEBUG_CAMERA_VERBOSE
     Serial.println("EOF");
 #endif
     _frame_row_index = 0;
     _dma_frame_count++;
-    if (_dma_last_completed_frame != _frame_buffer_1) {
-      _dma_last_completed_frame = _frame_buffer_1;
-      _frame_row_buffer_pointer = _frame_buffer_2;
-    } else {
-      _dma_last_completed_frame = _frame_buffer_2;
-      _frame_row_buffer_pointer = _frame_buffer_1;
-    }
-    _frame_buffer_pointer = _frame_row_buffer_pointer;
+
+    bool swap_buffers = true;
 
     //DebugDigitalToggle(OV7670_DEBUG_PIN_1);
-    if (_callback) (*_callback)(_dma_last_completed_frame);
+    _dma_last_completed_frame = _frame_row_buffer_pointer;
+    if (_callback) swap_buffers = (*_callback)(_dma_last_completed_frame);
+
+    if (swap_buffers) {
+        if (_frame_row_buffer_pointer != _frame_buffer_1) _frame_row_buffer_pointer = _frame_buffer_2;
+        else _frame_row_buffer_pointer = _frame_buffer_2;    
+    }
+
+    _frame_buffer_pointer = _frame_row_buffer_pointer;
+
     //DebugDigitalToggle(OV7670_DEBUG_PIN_1);
 
 
@@ -1582,6 +1580,13 @@ void HM01B0::processDMAInterrupt() {
     }
   } else {
 
+#if 1
+    if (_bytes_left_dma == (2 * DMABUFFER_SIZE)) {
+      if (_dma_index & 1) _dmasettings[0].disableOnCompletion();
+      else _dmasettings[1].disableOnCompletion();
+    }
+
+#else
     if (_bytes_left_dma <= (2 * DMABUFFER_SIZE)) {
       if (_dma_index & 1) {
         _dmasettings[0].disableOnCompletion();
@@ -1593,6 +1598,7 @@ void HM01B0::processDMAInterrupt() {
         else   _dmasettings[0].transferCount(_bytes_left_dma - DMABUFFER_SIZE);
       }
     }
+#endif      
   }
   //DebugDigitalWrite(OV7670_DEBUG_PIN_3, LOW);
 }
