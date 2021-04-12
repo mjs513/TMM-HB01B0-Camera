@@ -1257,7 +1257,7 @@ void  HM01B0::frameStartInterrupt() {
 }
 
 void  HM01B0::processFrameStartInterrupt() {
-  _bytes_left_dma = (w + _frame_ignore_cols) * h * 2; // for now assuming color 565 image...
+  _bytes_left_dma = (w + _frame_ignore_cols) * h; // for now assuming color 565 image...
   _dma_index = 0;
   _frame_col_index = 0;  // which column we are in a row
   _frame_row_index = 0;  // which row

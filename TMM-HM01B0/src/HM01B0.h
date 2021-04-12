@@ -239,7 +239,7 @@ class HM01B0
 	uint32_t OMV_XCLK_FREQUENCY	= 6000000;
 
 	// DMA STUFF
-	enum {DMABUFFER_SIZE=1280};  // 640x480  so 640*2*2
+	enum {DMABUFFER_SIZE=1296};  // 640x480  so 640*2*2
 	static DMAChannel _dmachannel;
 	static DMASetting _dmasettings[2];
 	static uint32_t _dmaBuffer1[DMABUFFER_SIZE];
