@@ -251,6 +251,8 @@ class HM01B0
 	uint8_t *_dma_last_completed_frame;
 	// TBD Allow user to set all of the buffers...
 
+	DMAChannel dma_flexio;
+
 	#if defined (ARDUINO_TEENSY_MICROMOD)
 	uint32_t _save_IOMUXC_GPR_GPR27;
 	#else
