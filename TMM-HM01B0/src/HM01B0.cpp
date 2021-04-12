@@ -1622,7 +1622,6 @@ void HM01B0::captureFrameStatistics()
 
    // lets wait for the vsync to go high;
     while ((*_vsyncPort & _vsyncMask) != 0); // wait for HIGH
-
     // now lets wait for it to go low    
     while ((*_vsyncPort & _vsyncMask) == 0) fstat.vsyncStartCycleCount ++; // wait for LOW
 
@@ -1630,6 +1629,7 @@ void HM01B0::captureFrameStatistics()
     while ((*_pclkPort & _pclkMask) != 0); // wait for LOW
 
     uint32_t microsStart = micros();
+    fstat.hrefStartTime[0] = microsStart;
     // now loop through until we get the next _vsynd
     // BUGBUG We know that HSYNC and PCLK on same GPIO VSYNC is not...
     uint32_t regs_prev = 0;
