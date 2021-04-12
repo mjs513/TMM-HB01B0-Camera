@@ -203,6 +203,7 @@ void setup()
   Serial.printf("ImageSize (w,h): %d, %d\n", hm01b0.w, hm01b0.h);
 
   Serial.println("Send the 's' character to read a frame ...");
+  Serial.println("Send the 'f' character to read a frame using FlexIO (changes hardware setup!)");
   Serial.println("Send the 'c' character to start/stop continuous display mode");
   Serial.println("Send the 'p' character to snapshot to PC on USB1");
   Serial.println("Send the 'd' character to read a frame using DMA ...");
@@ -337,6 +338,25 @@ void loop()
             //        Serial.println("*** Return from updateScreenAsync ***");
             g_dma_mode = true;
           }
+          break;
+        }
+      case 'f':
+       {
+          tft.fillScreen(TFT_BLACK);
+          //calAE();
+          Serial.println("Reading frame using FlexIO");
+          memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
+          hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
+          hm01b0.readFrameFlexIO(frameBuffer);
+          Serial.println("Finished reading frame"); Serial.flush();
+          //convert grayscale to rgb
+          for(int i = 0; i < FRAME_HEIGHT*FRAME_WIDTH; i++) {
+            imageBuffer[i] = color565(frameBuffer[i], frameBuffer[i], frameBuffer[i]);
+          }
+          tft.writeSubImageRect(0, 0, tft.width(), tft.height(),  (FRAME_WIDTH - tft.width()) / 2, (FRAME_HEIGHT - tft.height()),
+                                  FRAME_WIDTH, FRAME_HEIGHT, imageBuffer);
+          ch = ' ';
+          g_continuous_mode = false;
           break;
         }
       case 'r':
