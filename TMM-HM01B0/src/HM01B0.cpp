@@ -1042,6 +1042,7 @@ static void flexio_configure()
 	Serial.printf(" FLEXIO2_TIMCTL2 = %08X\n", FLEXIO2_TIMCTL2);
 }
 
+#define FLEXIO_USE_DMA
 
 void HM01B0::readFrameFlexIO(void* buffer)
 {
@@ -1049,11 +1050,13 @@ void HM01B0::readFrameFlexIO(void* buffer)
 
 	// wait for VSYNC to be low
 	while ((*_vsyncPort & _vsyncMask) != 0);
+	FLEXIO2_SHIFTSTAT = 0x08; // clear any prior shift status
+	FLEXIO2_SHIFTERR = 0x08;
 
+#ifndef FLEXIO_USE_DMA
+	// read FlexIO by polling
 	uint32_t *p = (uint32_t *)buffer;
 	uint32_t *p_end = (uint32_t *)buffer + 324*244/4;
-
-	FLEXIO2_SHIFTSTAT = 0x08; // clear any prior shift status
 
 	while (p < p_end) {
 		while ((FLEXIO2_SHIFTSTAT & 0x08) == 0) {
@@ -1061,6 +1064,59 @@ void HM01B0::readFrameFlexIO(void* buffer)
 		}
 		*p++ = FLEXIO2_SHIFTBUF3; // should use DMA...
 	}
+#else
+	// read FlexIO by DMA
+	dma_flexio.begin();
+	const uint32_t length = 324*244;
+	dma_flexio.source(FLEXIO2_SHIFTBUF3);
+	dma_flexio.destinationBuffer((uint32_t *)buffer, length);
+	dma_flexio.transferSize(4);
+	dma_flexio.transferCount(length / 4);
+	dma_flexio.disableOnCompletion();
+	dma_flexio.clearComplete();
+	dma_flexio.triggerAtHardwareEvent(DMAMUX_SOURCE_FLEXIO2_REQUEST0);
+	dma_flexio.enable();
+	FLEXIO2_SHIFTSDEN = 0x08;
+	uint32_t manual_trigger_count = 0;
+
+	elapsedMillis timeout = 0;
+	while (!dma_flexio.complete()) {
+		// wait - we should not need to actually do anything during the DMA transfer
+		if (dma_flexio.error()) {
+			Serial.println("DMA error");
+			break;
+		}
+		if (FLEXIO2_SHIFTSTAT & 0x08) {
+			if (FLEXIO2_SHIFTSTAT & 0x08) {
+				// should never get here, since FLEXIO2_SHIFTSTAT is
+				// automatically cleared by DMA, so we should never see
+				// it high twice in a row.
+
+				// why is DMAMUX_SOURCE_FLEXIO2_REQUEST0 not working?
+				// manually trigger
+				dma_flexio.TCD->CSR |= DMA_TCD_CSR_START;
+				manual_trigger_count++;
+			}
+		}
+		if (timeout > 500) {
+			Serial.println("Timeout waiting for DMA");
+			if (FLEXIO2_SHIFTSTAT & 0x08) Serial.println(" SHIFTSTAT bit was set");
+			Serial.printf(" DMA channel #%u\n", dma_flexio.channel);
+			Serial.printf(" DMAMUX = %08X\n", *(&DMAMUX_CHCFG0 + dma_flexio.channel));
+			Serial.printf(" FLEXIO2_SHIFTSDEN = %02X\n", FLEXIO2_SHIFTSDEN);
+			Serial.printf(" TCD CITER = %u\n", dma_flexio.TCD->CITER_ELINKNO);
+			Serial.printf(" TCD CSR = %08X\n", dma_flexio.TCD->CSR);
+			break;
+		}
+	}
+	if (manual_trigger_count > 0) {
+		Serial.printf("ERROR: %u manual triggers were needed\n", manual_trigger_count);
+		if (manual_trigger_count == length / 4) {
+			Serial.printf("ERROR: DMA never triggered by hardware!!!\n");
+		}
+	}
+	arm_dcache_delete(buffer, length);
+#endif
 }
 
 
