@@ -83,7 +83,6 @@ ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST);
 
 uint16_t FRAME_WIDTH, FRAME_HEIGHT;
 uint8_t frameBuffer[(324) * 244];
-uint16_t imageBuffer[(324) * 244]; DMAMEM
 uint8_t sendImageBuf[(324) * 244 * 2];
 uint8_t frameBuffer2[(324) * 244] DMAMEM;
 
@@ -232,13 +231,8 @@ uint16_t *last_dma_frame_buffer = nullptr;
 bool hm01b0_dma_callback(void *pfb) {
   //Serial.printf("Callback: %x\n", (uint32_t)pfb);
   if (tft.asyncUpdateActive()) return false; // don't use if we are already busy
-  uint8_t *pframeBuffer = (uint8_t*)pfb;
-  for (int i = 0; i < FRAME_HEIGHT * FRAME_WIDTH; i++) {
-    uint8_t b = *pframeBuffer++;
-    frameBuffer[i] = b;
-  }
   tft.setOrigin(-2, -2);
-  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, frameBuffer, mono_palette);
+  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)pfb, mono_palette);
   tft.setOrigin(0, 0);
   tft.updateScreenAsync();
 

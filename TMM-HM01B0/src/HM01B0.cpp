@@ -47,7 +47,7 @@ SOFTWARE.
 
 #define HIMAX_LINE_LEN_PCK_QQVGA    0x178
 #define HIMAX_FRAME_LENGTH_QQVGA    0x084
-//#define DEBUG_CAMERA
+#define DEBUG_CAMERA
 
 const uint16_t default_regs[][2] = {
     {BLC_TGT,              0x08},          //  BLC target :8  at 8 bit mode
@@ -1399,14 +1399,14 @@ bool HM01B0::startReadFrameDMA(bool(*callback)(void *frame_buffer), uint8_t *fb1
 
   // configure DMA channels
   _dmachannel.begin();
-  _dmasettings[0].source(GPIO2_DR); // setup source.
+  _dmasettings[0].source(GPIO2_PSR); // setup source.
   _dmasettings[0].destinationBuffer(_dmaBuffer1, DMABUFFER_SIZE * 4);  // 32 bits per logical byte
   _dmasettings[0].replaceSettingsOnCompletion(_dmasettings[1]);
   _dmasettings[0].interruptAtCompletion();  // we will need an interrupt to process this.
   _dmasettings[0].TCD->CSR &= ~(DMA_TCD_CSR_DREQ); // Don't disable on this one
   //DebugDigitalToggle(OV7670_DEBUG_PIN_1);
 
-  _dmasettings[1].source(GPIO2_DR); // setup source.
+  _dmasettings[1].source(GPIO2_PSR); // setup source.
   _dmasettings[1].destinationBuffer(_dmaBuffer2, DMABUFFER_SIZE * 4);  // 32 bits per logical byte
   _dmasettings[1].replaceSettingsOnCompletion(_dmasettings[0]);
   _dmasettings[1].interruptAtCompletion();  // we will need an interrupt to process this.
@@ -1639,29 +1639,32 @@ void HM01B0::processDMAInterrupt() {
       _dma_state = DMA_STATE_STOPPED;
     } else {
       // We need to start up our ISR for the next frame. 
+#if 1
+  // bypass interrupt and just restart DMA... 
+  _bytes_left_dma = (w + _frame_ignore_cols) * h; // for now assuming color 565 image...
+  _dma_index = 0;
+  _frame_col_index = 0;  // which column we are in a row
+  _frame_row_index = 0;  // which row
+  _save_lsb = 0xffff;
+  // make sure our DMA is setup properly again. 
+  _dmasettings[0].transferCount(DMABUFFER_SIZE);
+  _dmasettings[0].TCD->CSR &= ~(DMA_TCD_CSR_DREQ); // Don't disable on this one
+  _dmasettings[1].transferCount(DMABUFFER_SIZE);
+  _dmasettings[1].TCD->CSR &= ~(DMA_TCD_CSR_DREQ); // Don't disable on this one
+  _dmachannel = _dmasettings[0];  // setup the first on...
+  _dmachannel.enable();
+
+#else
       attachInterrupt(VSYNC_PIN, &frameStartInterrupt, RISING);
+#endif
     }
   } else {
 
-#if 1
     if (_bytes_left_dma == (2 * DMABUFFER_SIZE)) {
       if (_dma_index & 1) _dmasettings[0].disableOnCompletion();
       else _dmasettings[1].disableOnCompletion();
     }
 
-#else
-    if (_bytes_left_dma <= (2 * DMABUFFER_SIZE)) {
-      if (_dma_index & 1) {
-        _dmasettings[0].disableOnCompletion();
-        if (_bytes_left_dma < DMABUFFER_SIZE)  _dmasettings[0].transferCount(_bytes_left_dma);
-        else   _dmasettings[0].transferCount(_bytes_left_dma - DMABUFFER_SIZE);
-      } else {
-        _dmasettings[1].disableOnCompletion();
-        if (_bytes_left_dma < DMABUFFER_SIZE)  _dmasettings[1].transferCount(_bytes_left_dma);
-        else   _dmasettings[0].transferCount(_bytes_left_dma - DMABUFFER_SIZE);
-      }
-    }
-#endif      
   }
   //DebugDigitalWrite(OV7670_DEBUG_PIN_3, LOW);
 }
