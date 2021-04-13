@@ -1074,10 +1074,9 @@ void HM01B0::readFrameFlexIO(void* buffer)
 	dma_flexio.transferCount(length / 4);
 	dma_flexio.disableOnCompletion();
 	dma_flexio.clearComplete();
-	dma_flexio.triggerAtHardwareEvent(DMAMUX_SOURCE_FLEXIO2_REQUEST0);
+	dma_flexio.triggerAtHardwareEvent(DMAMUX_SOURCE_FLEXIO2_REQUEST3);
 	dma_flexio.enable();
 	FLEXIO2_SHIFTSDEN = 0x08;
-	uint32_t manual_trigger_count = 0;
 
 	elapsedMillis timeout = 0;
 	while (!dma_flexio.complete()) {
@@ -1085,18 +1084,6 @@ void HM01B0::readFrameFlexIO(void* buffer)
 		if (dma_flexio.error()) {
 			Serial.println("DMA error");
 			break;
-		}
-		if (FLEXIO2_SHIFTSTAT & 0x08) {
-			if (FLEXIO2_SHIFTSTAT & 0x08) {
-				// should never get here, since FLEXIO2_SHIFTSTAT is
-				// automatically cleared by DMA, so we should never see
-				// it high twice in a row.
-
-				// why is DMAMUX_SOURCE_FLEXIO2_REQUEST0 not working?
-				// manually trigger
-				dma_flexio.TCD->CSR |= DMA_TCD_CSR_START;
-				manual_trigger_count++;
-			}
 		}
 		if (timeout > 500) {
 			Serial.println("Timeout waiting for DMA");
@@ -1107,12 +1094,6 @@ void HM01B0::readFrameFlexIO(void* buffer)
 			Serial.printf(" TCD CITER = %u\n", dma_flexio.TCD->CITER_ELINKNO);
 			Serial.printf(" TCD CSR = %08X\n", dma_flexio.TCD->CSR);
 			break;
-		}
-	}
-	if (manual_trigger_count > 0) {
-		Serial.printf("ERROR: %u manual triggers were needed\n", manual_trigger_count);
-		if (manual_trigger_count == length / 4) {
-			Serial.printf("ERROR: DMA never triggered by hardware!!!\n");
 		}
 	}
 	arm_dcache_delete(buffer, length);
