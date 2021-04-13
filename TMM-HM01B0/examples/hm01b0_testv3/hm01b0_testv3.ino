@@ -58,8 +58,8 @@ File file;
 #define TFT_CS  4   // "CS" on left side of Sparkfun ML Carrier
 #define TFT_RST  0  // "RX1" on left side of Sparkfun ML Carrier
 
-//#define TFT_ST7789 1
-#define TFT_ILI9341 1
+#define TFT_ST7789 1
+//#define TFT_ILI9341 1
 
 #ifdef TFT_ST7789
 //ST7735 Adafruit 320x240 display
@@ -83,7 +83,6 @@ ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST);
 
 uint16_t FRAME_WIDTH, FRAME_HEIGHT;
 uint8_t frameBuffer[(324) * 244];
-uint16_t imageBuffer[(324) * 244]; DMAMEM
 uint8_t sendImageBuf[(324) * 244 * 2];
 uint8_t frameBuffer2[(324) * 244] DMAMEM;
 
@@ -232,14 +231,9 @@ uint16_t *last_dma_frame_buffer = nullptr;
 bool hm01b0_dma_callback(void *pfb) {
   //Serial.printf("Callback: %x\n", (uint32_t)pfb);
   if (tft.asyncUpdateActive()) return false; // don't use if we are already busy
-  uint8_t *pframeBuffer = (uint8_t*)pfb;
-  for (int i = 0; i < FRAME_HEIGHT * FRAME_WIDTH; i++) {
-    uint8_t b = *pframeBuffer++;
-    imageBuffer[i] = color565(b, b, b);
-  }
-  tft.writeRect(0, 0, tft.width(), tft.height(), imageBuffer);
-  //tft.writeSubImageRect(0, 0, tft.width(), tft.height(),  (FRAME_WIDTH - tft.width()) / 2, (FRAME_HEIGHT - tft.height()),
-  //                        FRAME_WIDTH, FRAME_HEIGHT, imageBuffer);
+  tft.setOrigin(-2, -2);
+  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)pfb, mono_palette);
+  tft.setOrigin(0, 0);
   tft.updateScreenAsync();
 
   last_dma_frame_buffer = (uint16_t*)pfb;
@@ -398,18 +392,19 @@ void loop()
     }
     case 'F':
     {
-      Serial.println("Reading frame using FlexIO");
-      memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-      hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-      hm01b0.readFrameFlexIO(frameBuffer);
-      Serial.println("Finished reading frame"); Serial.flush();
-      g_continuous_flex_mode = !g_continuous_flex_mode;
-      if ( g_continuous_flex_mode )
-        tft.useFrameBuffer(true);
-      else
-        tft.useFrameBuffer(false);
-      ch = ' ';
-      break;
+      if (!g_continuous_flex_mode) {
+        if (hm01b0.startReadFlexIO(&hm01b0_dma_callback, frameBuffer, frameBuffer2)) {
+          Serial.println("* continuous FlexIO mode started");
+          tft.useFrameBuffer(true);
+          g_continuous_flex_mode = true;
+        } else {
+          Serial.println("* error, could not start continuous FlexIO mode");
+        }
+      } else {
+        hm01b0.stopReadFlexIO();
+        g_continuous_flex_mode = false;
+        Serial.println("* continuous FlexIO mode stopped");
+      }
     }
     case 'r':
       hm01b0.showRegisters();
