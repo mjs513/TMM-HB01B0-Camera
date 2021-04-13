@@ -1317,14 +1317,14 @@ bool HM01B0::startReadFrameDMA(bool(*callback)(void *frame_buffer), uint8_t *fb1
 
   // configure DMA channels
   _dmachannel.begin();
-  _dmasettings[0].source(GPIO2_DR); // setup source.
+  _dmasettings[0].source(GPIO2_PSR); // setup source.
   _dmasettings[0].destinationBuffer(_dmaBuffer1, DMABUFFER_SIZE * 4);  // 32 bits per logical byte
   _dmasettings[0].replaceSettingsOnCompletion(_dmasettings[1]);
   _dmasettings[0].interruptAtCompletion();  // we will need an interrupt to process this.
   _dmasettings[0].TCD->CSR &= ~(DMA_TCD_CSR_DREQ); // Don't disable on this one
   //DebugDigitalToggle(OV7670_DEBUG_PIN_1);
 
-  _dmasettings[1].source(GPIO2_DR); // setup source.
+  _dmasettings[1].source(GPIO2_PSR); // setup source.
   _dmasettings[1].destinationBuffer(_dmaBuffer2, DMABUFFER_SIZE * 4);  // 32 bits per logical byte
   _dmasettings[1].replaceSettingsOnCompletion(_dmasettings[0]);
   _dmasettings[1].interruptAtCompletion();  // we will need an interrupt to process this.
