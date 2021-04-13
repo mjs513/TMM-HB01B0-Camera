@@ -137,6 +137,8 @@ class HM01B0
 	inline void *frameBuffer() {return _dma_last_completed_frame;}
 	void captureFrameStatistics();
 
+	bool startReadFlexIO(bool (*callback)(void *frame_buffer), void *fb1, void *fb2);
+	bool stopReadFlexIO();
 
 	int init();
 	
@@ -277,6 +279,10 @@ class HM01B0
 	void processDMAInterrupt();
 	static void frameStartInterrupt();
 	void processFrameStartInterrupt();
+	static void dmaInterruptFlexIO();
+	void processDMAInterruptFlexIO();
+	static void frameStartInterruptFlexIO();
+	void processFrameStartInterruptFlexIO();
 	static HM01B0 *active_dma_camera;
 
 

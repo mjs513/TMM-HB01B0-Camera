@@ -398,18 +398,19 @@ void loop()
     }
     case 'F':
     {
-      Serial.println("Reading frame using FlexIO");
-      memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-      hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-      hm01b0.readFrameFlexIO(frameBuffer);
-      Serial.println("Finished reading frame"); Serial.flush();
-      g_continuous_flex_mode = !g_continuous_flex_mode;
-      if ( g_continuous_flex_mode )
-        tft.useFrameBuffer(true);
-      else
-        tft.useFrameBuffer(false);
-      ch = ' ';
-      break;
+      if (!g_continuous_flex_mode) {
+        if (hm01b0.startReadFlexIO(&hm01b0_dma_callback, frameBuffer, frameBuffer2)) {
+          Serial.println("* continuous FlexIO mode started");
+          tft.useFrameBuffer(true);
+          g_continuous_flex_mode = true;
+        } else {
+          Serial.println("* error, could not start continuous FlexIO mode");
+        }
+      } else {
+        hm01b0.stopReadFlexIO();
+        g_continuous_flex_mode = false;
+        Serial.println("* continuous FlexIO mode stopped");
+      }
     }
     case 'r':
       hm01b0.showRegisters();
