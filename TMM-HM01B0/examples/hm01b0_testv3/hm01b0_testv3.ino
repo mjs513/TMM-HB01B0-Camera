@@ -90,6 +90,10 @@ uint8_t frameBuffer2[(324) * 244] DMAMEM;
 bool g_continuous_mode = false;
 bool g_continuous_pc_mode = false;
 bool g_continuous_flex_mode = false;
+void * volatile g_new_flexio_data = nullptr;
+uint32_t g_flexio_capture_count = 0;
+uint32_t g_flexio_redraw_count = 0;
+elapsedMillis g_flexio_runtime;
 bool g_dma_mode = false;
 bool g_vsync = false;
 
@@ -246,6 +250,13 @@ bool hm01b0_dma_callback(void *pfb) {
   return true;
 }
 
+bool hm01b0_flexio_callback(void *pfb)
+{
+  //Serial.println("Flexio callback");
+  g_new_flexio_data = pfb;
+  return true;
+}
+
 
 void loop()
 {
@@ -399,9 +410,11 @@ void loop()
     case 'F':
     {
       if (!g_continuous_flex_mode) {
-        if (hm01b0.startReadFlexIO(&hm01b0_dma_callback, frameBuffer, frameBuffer2)) {
+        if (hm01b0.startReadFlexIO(&hm01b0_flexio_callback, frameBuffer, frameBuffer2)) {
           Serial.println("* continuous FlexIO mode started");
-          tft.useFrameBuffer(true);
+          g_flexio_capture_count = 0;
+          g_flexio_redraw_count = 0;
+          elapsedMillis g_flexio_runtime;
           g_continuous_flex_mode = true;
         } else {
           Serial.println("* error, could not start continuous FlexIO mode");
@@ -445,19 +458,27 @@ void loop()
     tft.setOrigin(0, 0);
   }
 
-  if ( g_continuous_flex_mode )
-  {
-    memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-    hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-    hm01b0.readFrameFlexIO(frameBuffer);
-    tft.setOrigin(-2, -2);
-    tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, frameBuffer, mono_palette);
-    tft.setOrigin(0, 0);
-    tft.updateScreenAsync();
+  if ( g_continuous_flex_mode ) {
+    if (g_new_flexio_data) {
+      //Serial.println("new FlexIO data");
+      tft.setOrigin(-2, -2);
+      tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t *)g_new_flexio_data, mono_palette);
+      tft.setOrigin(0, 0);
+      tft.updateScreenAsync();
+      g_new_flexio_data = nullptr;
+      g_flexio_redraw_count++;
+      if (g_flexio_runtime > 10000) {
+        // print some stats on actual speed, but not too much
+        // printing too quickly to be considered "spew"
+        float redraw_rate = (float)g_flexio_redraw_count / (float)g_flexio_runtime * 1000.0f;
+        g_flexio_runtime = 0;
+        g_flexio_redraw_count = 0;
+        Serial.printf("redraw rate = %.2f Hz\n", redraw_rate);
+      }
+    }
   }
-
-
 }
+
 
 // Pass 8-bit (each) R,G,B, get back 16-bit packed color
 uint16_t color565(uint8_t r, uint8_t g, uint8_t b) {
