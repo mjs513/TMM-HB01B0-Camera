@@ -47,7 +47,8 @@ SOFTWARE.
 
 #define HIMAX_LINE_LEN_PCK_QQVGA    0x178
 #define HIMAX_FRAME_LENGTH_QQVGA    0x084
-#define DEBUG_CAMERA
+
+//#define DEBUG_CAMERA
 
 const uint16_t default_regs[][2] = {
     {BLC_TGT,              0x08},          //  BLC target :8  at 8 bit mode
