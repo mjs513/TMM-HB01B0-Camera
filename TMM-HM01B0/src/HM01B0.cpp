@@ -1101,6 +1101,88 @@ void HM01B0::readFrameFlexIO(void* buffer)
 }
 
 
+bool HM01B0::startReadFlexIO(bool(*callback)(void *frame_buffer), void *fb1, void *fb2)
+{
+#ifdef FLEXIO_USE_DMA
+	if (fb1 == nullptr || fb2 == nullptr) return false;
+	_frame_buffer_1 = (uint8_t *)fb1;
+	_frame_buffer_2 = (uint8_t *)fb2;
+	_callback = callback;
+	active_dma_camera = this;
+	Serial.printf("startReadFrameFlexIO called buffers %x %x\n", (uint32_t)fb1, (uint32_t)fb2);
+
+	flexio_configure(); // one-time hardware setup
+	dma_flexio.begin();
+	const uint32_t length = 324*244;
+	dma_flexio.source(FLEXIO2_SHIFTBUF3);
+	dma_flexio.destinationBuffer((uint32_t *)fb1, length);
+	dma_flexio.transferSize(4);
+	dma_flexio.transferCount(length / 4);
+	dma_flexio.disableOnCompletion();
+	dma_flexio.clearComplete();
+	dma_flexio.triggerAtHardwareEvent(DMAMUX_SOURCE_FLEXIO2_REQUEST3);
+	//dma_flexio.enable();
+	dma_flexio.attachInterrupt(dmaInterruptFlexIO);
+	FLEXIO2_SHIFTSDEN = 0x08;
+	_dma_frame_count = 0;
+
+	attachInterrupt(VSYNC_PIN, &frameStartInterruptFlexIO, RISING);
+	return true;
+#else
+	return false;
+#endif
+}
+
+void HM01B0::frameStartInterruptFlexIO()
+{
+	active_dma_camera->processFrameStartInterruptFlexIO();
+}
+
+void HM01B0::processFrameStartInterruptFlexIO()
+{
+	FLEXIO2_SHIFTSTAT = 0x08; // clear any prior shift status
+	FLEXIO2_SHIFTERR = 0x08;
+	// TODO: could a prior status have a DMA request still be pending?
+	void *dest = (_dma_frame_count & 1) ? _frame_buffer_2 : _frame_buffer_1;
+	dma_flexio.TCD->DADDR = dest;
+	dma_flexio.clearComplete();
+	dma_flexio.enable();
+	asm("DSB");
+}
+
+void HM01B0::dmaInterruptFlexIO()
+{
+	active_dma_camera->processDMAInterruptFlexIO();
+}
+
+void HM01B0::processDMAInterruptFlexIO()
+{
+	dma_flexio.clearInterrupt();
+	if (dma_flexio.error()) return; // TODO: report or handle error??
+	void *dest = (_dma_frame_count & 1) ? _frame_buffer_2 : _frame_buffer_1;
+	const uint32_t length = 324*244;
+	_dma_frame_count++;
+	arm_dcache_delete(dest, length);
+	if (_callback) (*_callback)(dest); // TODO: use EventResponder
+	asm("DSB");
+}
+
+
+bool HM01B0::stopReadFlexIO()
+{
+	detachInterrupt(VSYNC_PIN);
+	dma_flexio.disable();
+	_frame_buffer_1 = nullptr;
+	_frame_buffer_2 = nullptr;
+	_callback = nullptr;
+	return true;
+}
+
+
+
+
+
+
 
 //*****************************************************************************
 //
