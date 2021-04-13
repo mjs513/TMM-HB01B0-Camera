@@ -50,7 +50,7 @@ static const uint16_t mono_palette[256] PROGMEM = {
 
 
 HM01B0 hm01b0;
-//#define USE_SPARKFUN 1
+#define USE_SPARKFUN 1
 #define USE_SDCARD 1
 File file;
 
@@ -58,8 +58,8 @@ File file;
 #define TFT_CS  4   // "CS" on left side of Sparkfun ML Carrier
 #define TFT_RST  0  // "RX1" on left side of Sparkfun ML Carrier
 
-#define TFT_ST7789 1
-//#define TFT_ILI9341 1
+//#define TFT_ST7789 1
+#define TFT_ILI9341 1
 
 #ifdef TFT_ST7789
 //ST7735 Adafruit 320x240 display
@@ -213,6 +213,7 @@ void setup()
   Serial.println("Send the 'p' character to snapshot to PC on USB1");
   Serial.println("Send the 'd' character to start/stop continuous display using DMA ...");
   Serial.println("Send the 'D' character to read a singleframe using DMA ...");
+  Serial.println("Send the 'V' character DMA to TFT async continueous  ...");
   Serial.println("Send the 'b' character to save snapshot (BMP) to SD Card");
   Serial.println("Send the 'B' character to save FLEXIO snapshot (BMP) to SD Card");
   Serial.println("send the 'r' Show Camera register settings");
@@ -230,7 +231,8 @@ void setup()
 
 }
 
-uint16_t *last_dma_frame_buffer = nullptr;
+uint8_t *last_dma_frame_buffer = nullptr;
+uint8_t *image_buffer_display = sendImageBuf; // BUGBUG using from somewhere else for now...
 
 bool hm01b0_dma_callback(void *pfb) {
   //Serial.printf("Callback: %x\n", (uint32_t)pfb);
@@ -240,7 +242,7 @@ bool hm01b0_dma_callback(void *pfb) {
   tft.setOrigin(0, 0);
   tft.updateScreenAsync();
 
-  last_dma_frame_buffer = (uint16_t*)pfb;
+  last_dma_frame_buffer = (uint8_t*)pfb;
   return true;
 }
 
@@ -251,6 +253,32 @@ bool hm01b0_flexio_callback(void *pfb)
   return true;
 }
 
+bool hm01b0_dma_callback_video(void *pfb) {
+  // just remember the last frame given to us. 
+  //Serial.printf("Callback: %x\n", (uint32_t)pfb);
+  last_dma_frame_buffer = (uint8_t*)pfb;
+  return true;
+}
+
+void tft_frame_cb() {
+  tft.setOrigin(-2, -2);
+  if (tft.subFrameCount()) {
+    // so finished drawing the top half of the display
+    tft.setClipRect(0, 0, tft.width(), tft.height() / 2);
+    tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)image_buffer_display, mono_palette);
+    // Lets play with buffers here. 
+  } else {
+    tft.setClipRect(0, tft.height() / 2, tft.width(), tft.height() / 2);      
+    tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)image_buffer_display, mono_palette);
+    if (last_dma_frame_buffer) {
+        hm01b0.changeFrameBuffer(last_dma_frame_buffer, image_buffer_display);
+        image_buffer_display = last_dma_frame_buffer;
+        last_dma_frame_buffer = nullptr;
+    }
+  }
+  tft.setOrigin(0, 0);
+  tft.setClipRect();
+}
 
 void loop()
 {
@@ -383,6 +411,34 @@ void loop()
       tft.setOrigin(0, 0);
       break;
     }
+    case 'V':
+    {
+      if (g_dma_mode) {
+        Serial.println("*** stopReadFrameDMA ***");
+        hm01b0.stopReadFrameDMA();
+        Serial.println("*** return from stopReadFrameDMA ***");
+        tft.endUpdateAsync();
+        tft.useFrameBuffer(false);
+        g_dma_mode = false;
+      } else {
+#ifdef TFT_ST7789
+        Serial.println("ST7735_t3 does not support the frame callback(yet), sorry");
+#else        
+        hm01b0.startReadFrameDMA(&hm01b0_dma_callback_video, frameBuffer, frameBuffer2);
+        Serial.println("*** Return from startReadFrameDMA ***");
+        tft.setFrameCompleteCB(&tft_frame_cb, true);
+
+        tft.useFrameBuffer(true);
+        tft.fillScreen(TFT_BLACK);
+        tft.updateScreenAsync(true);
+        //        Serial.println("*** Return from updateScreenAsync ***");
+        g_dma_mode = true;
+#endif
+      }
+      break;
+    }
+      Serial.println("Send the 'V' character DMA to TFT async continueous  ...");
+
     case 'f':
     {
       tft.useFrameBuffer(false);

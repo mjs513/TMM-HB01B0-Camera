@@ -132,6 +132,10 @@ class HM01B0
 	// So lets have a start, stop... Have it allocate 2 frame buffers and it's own DMA 
 	// buffers, with the option of setting your own buffers if desired.
 	bool startReadFrameDMA(bool (*callback)(void *frame_buffer)=nullptr, uint8_t *fb1=nullptr, uint8_t *fb2=nullptr);
+	void changeFrameBuffer(uint8_t *fbFrom, uint8_t *fbTo) {
+		if (_frame_buffer_1 == fbFrom) _frame_buffer_1 = fbTo;
+		else if (_frame_buffer_2 == fbFrom) _frame_buffer_2 = fbTo;
+	}
 	bool stopReadFrameDMA();
 	inline uint32_t frameCount() {return _dma_frame_count;}
 	inline void *frameBuffer() {return _dma_last_completed_frame;}
@@ -249,7 +253,7 @@ class HM01B0
 	static uint32_t _dmaBuffer1[DMABUFFER_SIZE];
 	static uint32_t _dmaBuffer2[DMABUFFER_SIZE];
 
-	bool (*_callback)(void *frame_buffer) =nullptr ;
+	bool (*_callback)(void *frame_buffer) = nullptr ;
 	uint32_t  _dma_frame_count;
 	uint8_t *_dma_last_completed_frame;
 	// TBD Allow user to set all of the buffers...
