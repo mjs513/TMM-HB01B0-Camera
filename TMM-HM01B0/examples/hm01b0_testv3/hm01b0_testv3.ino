@@ -58,8 +58,8 @@ File file;
 #define TFT_CS  4   // "CS" on left side of Sparkfun ML Carrier
 #define TFT_RST  0  // "RX1" on left side of Sparkfun ML Carrier
 
-#define TFT_ST7789 1
-//#define TFT_ILI9341 1
+//#define TFT_ST7789 1
+#define TFT_ILI9341 1
 
 #ifdef TFT_ST7789
 //ST7735 Adafruit 320x240 display
@@ -386,6 +386,7 @@ void loop()
     case 'f':
     {
       tft.useFrameBuffer(false);
+      hm01b0.stopReadFlexIO();
       tft.fillScreen(TFT_BLACK);
       //calAE();
       Serial.println("Reading frame using FlexIO");
@@ -531,6 +532,13 @@ void save_image_SD() {
   int fileSize = 54 + h * rowSize;      // headers (54 bytes) + pixel data
 
 //  img = (unsigned char *)malloc(3 * w * h);
+  uint8_t *fBuff;
+  fBuff = frameBuffer;
+  if ( g_continuous_flex_mode ) {
+    if ( nullptr != g_new_flexio_data ) {
+      fBuff = (uint8_t *)g_new_flexio_data;
+    }
+  }
 
   for (int i = 0; i < w; i++)
   {
@@ -539,9 +547,9 @@ void save_image_SD() {
       //r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3
       x = i; y = (h - 1) - j;
 
-      r = frameBuffer[(x + y * w)]    ;
-      g = frameBuffer[(x + y * w)]    ;
-      b = frameBuffer[(x + y * w)]    ;
+      r = fBuff[(x + y * w)]    ;
+      g = fBuff[(x + y * w)]    ;
+      b = fBuff[(x + y * w)]    ;
 
       img[(x + y * w) * 3 + 2] = (unsigned char)(r);
       img[(x + y * w) * 3 + 1] = (unsigned char)(g);
