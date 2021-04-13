@@ -58,8 +58,8 @@ File file;
 #define TFT_CS  4   // "CS" on left side of Sparkfun ML Carrier
 #define TFT_RST  0  // "RX1" on left side of Sparkfun ML Carrier
 
-//#define TFT_ST7789 1
-#define TFT_ILI9341 1
+#define TFT_ST7789 1
+//#define TFT_ILI9341 1
 
 #ifdef TFT_ST7789
 //ST7735 Adafruit 320x240 display
@@ -235,11 +235,11 @@ bool hm01b0_dma_callback(void *pfb) {
   uint8_t *pframeBuffer = (uint8_t*)pfb;
   for (int i = 0; i < FRAME_HEIGHT * FRAME_WIDTH; i++) {
     uint8_t b = *pframeBuffer++;
-    imageBuffer[i] = color565(b, b, b);
+    frameBuffer[i] = b;
   }
-  tft.writeRect(0, 0, tft.width(), tft.height(), imageBuffer);
-  //tft.writeSubImageRect(0, 0, tft.width(), tft.height(),  (FRAME_WIDTH - tft.width()) / 2, (FRAME_HEIGHT - tft.height()),
-  //                        FRAME_WIDTH, FRAME_HEIGHT, imageBuffer);
+  tft.setOrigin(-2, -2);
+  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, frameBuffer, mono_palette);
+  tft.setOrigin(0, 0);
   tft.updateScreenAsync();
 
   last_dma_frame_buffer = (uint16_t*)pfb;
