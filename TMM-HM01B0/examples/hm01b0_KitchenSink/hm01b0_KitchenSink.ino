@@ -48,18 +48,27 @@ static const uint16_t mono_palette[256] PROGMEM = {
   MCP(0xf0), MCP(0xf1), MCP(0xf2), MCP(0xf3), MCP(0xf4), MCP(0xf5), MCP(0xf6), MCP(0xf7), MCP(0xf8), MCP(0xf9), MCP(0xfa), MCP(0xfb), MCP(0xfc), MCP(0xfd), MCP(0xfe), MCP(0xff)
 };
 
+#define BMPIMAGEOFFSET 66
+const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
+{
+  0x42, 0x4D, 0x36, 0x58, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x42, 0x00, 0x00, 0x00, 0x28, 0x00,
+  0x00, 0x00, 0x40, 0x01, 0x00, 0x00, 0xF0, 0x00, 0x00, 0x00, 0x01, 0x00, 0x10, 0x00, 0x03, 0x00,
+  0x00, 0x00, 0x00, 0x58, 0x02, 0x00, 0xC4, 0x0E, 0x00, 0x00, 0xC4, 0x0E, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF8, 0x00, 0x00, 0xE0, 0x07, 0x00, 0x00, 0x1F, 0x00,
+  0x00, 0x00
+};
 
 HM01B0 hm01b0;
-#define USE_SPARKFUN 1
-#define USE_SDCARD 1
+//#define USE_SPARKFUN 1
+//#define USE_SDCARD 1
 File file;
 
 #define TFT_DC  1   // "TX1" on left side of Sparkfun ML Carrier
 #define TFT_CS  4   // "CS" on left side of Sparkfun ML Carrier
 #define TFT_RST  0  // "RX1" on left side of Sparkfun ML Carrier
 
-//#define TFT_ST7789 1
-#define TFT_ILI9341 1
+#define TFT_ST7789 1
+//#define TFT_ILI9341 1
 
 #ifdef TFT_ST7789
 //ST7735 Adafruit 320x240 display
@@ -122,7 +131,7 @@ void setup()
   tft.println("Waiting for Arduino Serial Monitor...");
 
   Wire.begin();
-  Serial.begin(9600);
+  Serial.begin(921600);
 
 #if defined(USE_SDCARD)
   Serial.println("Using SDCARD - Initializing");
@@ -206,22 +215,7 @@ void setup()
   FRAME_WIDTH  = hm01b0.w;
   Serial.printf("ImageSize (w,h): %d, %d\n", hm01b0.w, hm01b0.h);
 
-  Serial.println("Send the 's' character to read a frame ...");
-  Serial.println("Send the 'f' character to read a frame using FlexIO (changes hardware setup!)");
-  Serial.println("Send the 'F' to start/stop continuous using FlexIO (changes hardware setup!)");
-  Serial.println("Send the 'c' character to start/stop continuous display mode");
-  Serial.println("Send the 'p' character to snapshot to PC on USB1");
-  Serial.println("Send the 'd' character to start/stop continuous display using DMA ...");
-  Serial.println("Send the 'D' character to read a singleframe using DMA ...");
-  Serial.println("Send the 'V' character DMA to TFT async continueous  ...");
-  Serial.println("Send the 'b' character to save snapshot (BMP) to SD Card");
-  Serial.println("Send the 'B' character to save FLEXIO snapshot (BMP) to SD Card");
-  Serial.println("send the 'r' Show Camera register settings");
-  Serial.println("send the 'v' Show VSYNCH Timing");
-  Serial.println("send the '?' character to show frame information");
-  Serial.println("Send the '0' character to blank the display");
-  Serial.println("Send the 'z' character to send current screen BMP to SD");
-  Serial.println();
+  showCommandList();
 
   //hm01b0.loadSettings(LOAD_WALKING1S_REG);
   //hm01b0.set_colorbar(true);
@@ -297,9 +291,9 @@ void loop()
     prior_vsync = vsync;
   }
 
+  char ch;
   if (Serial.available()) {
-    int ch = Serial.read();
-    while (Serial.read() != -1); // get rid of the rest...
+    ch = Serial.read();
     switch (ch) {
     case 's':
     {
@@ -420,10 +414,7 @@ void loop()
         tft.endUpdateAsync();
         tft.useFrameBuffer(false);
         g_dma_mode = false;
-      } else {
-#ifdef TFT_ST7789
-        Serial.println("ST7735_t3 does not support the frame callback(yet), sorry");
-#else        
+      } else {  
         hm01b0.startReadFrameDMA(&hm01b0_dma_callback_video, frameBuffer, frameBuffer2);
         Serial.println("*** Return from startReadFrameDMA ***");
         tft.setFrameCompleteCB(&tft_frame_cb, true);
@@ -433,7 +424,6 @@ void loop()
         tft.updateScreenAsync(true);
         //        Serial.println("*** Return from updateScreenAsync ***");
         g_dma_mode = true;
-#endif
       }
       break;
     }
@@ -474,14 +464,19 @@ void loop()
         g_continuous_flex_mode = false;
         Serial.println("* continuous FlexIO mode stopped");
       }
+      break;
     }
     case 'r':
+    {
       hm01b0.showRegisters();
       break;
+    }
     case '?':
+    {
       hm01b0.captureFrameStatistics();
       break;
-    case '0':
+    }
+    case '1':
     {
       tft.fillScreen(TFT_BLACK);
       break;
@@ -495,8 +490,19 @@ void loop()
       }
       break;
     }
+    case 0x30:
+    {
+        Serial.println(F("ACK CMD CAM start single shoot. END"));
+        send_image();
+        Serial.println(F("READY. END"));
+        break;
     }
-  }
+      default:
+        showCommandList();
+        break;
+    }
+   while (Serial.read() != -1); // lets strip the rest out
+   }
 
 
   if (g_continuous_mode) {
@@ -548,6 +554,41 @@ void calAE() {
   }
 }
 
+DMAMEM unsigned char image[324*244];
+void send_image() {
+  uint32_t imagesize, fbc;
+  imagesize = (320 * 240 * 2);
+  hm01b0.set_vflip(true);
+  memset(frameBuffer, 0, sizeof(frameBuffer));
+  hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
+  hm01b0.readFrame(frameBuffer);
+  
+  uint32_t image_idx = 0;
+  uint32_t frame_idx = 0;
+
+  for (uint32_t row = 0; row < 240; row++) {
+    for (uint32_t col = 0; col < 320; col++) {
+      frame_idx = (324 * (row + 2)) + col + 2;
+      uint16_t framePixel = color565(frameBuffer[frame_idx], frameBuffer[frame_idx], frameBuffer[frame_idx]);
+      sendImageBuf[image_idx++] = (framePixel) & 0xFF;
+      sendImageBuf[image_idx++] = (framePixel >> 8) & 0xFF;
+    }
+  }
+  
+  Serial.write(0xFF);
+  Serial.write(0xAA);
+
+  Serial.write((const uint8_t *)&bmp_header, sizeof(bmp_header));
+
+  Serial.write(sendImageBuf, imagesize);
+
+  Serial.write(0xBB);
+  Serial.write(0xCC);
+
+  Serial.println(F("ACK CMD CAM Capture Done. END"));delay(50);
+
+}
+
 #if defined(USB_DUAL_SERIAL) || defined(USB_TRIPLE_SERIAL)
 void send_raw() {
   uint32_t imagesize;
@@ -563,7 +604,6 @@ void save_image_SD() {
   uint32_t x, y;
 
   Serial.print("Writing BMP to SD CARD File: ");
-  // Serial.println(name);
 
   // if name exists, create new filename, SD.exists(filename)
   for (int i = 0; i < 10000; i++) {
@@ -639,4 +679,23 @@ void save_image_SD() {
   //free(img);
   file.close();                                        // close file when done writing
   Serial.println("Done Writing BMP");
+}
+
+void showCommandList() {
+  Serial.println("Send the 's' character to read a frame ...");
+  Serial.println("Send the 'f' character to read a frame using FlexIO (changes hardware setup!)");
+  Serial.println("Send the 'F' to start/stop continuous using FlexIO (changes hardware setup!)");
+  Serial.println("Send the 'c' character to start/stop continuous display mode");
+  Serial.println("Send the 'p' character to snapshot to PC on USB1");
+  Serial.println("Send the 'd' character to start/stop continuous display using DMA ...");
+  Serial.println("Send the 'D' character to read a singleframe using DMA ...");
+  Serial.println("Send the 'V' character DMA to TFT async continueous  ...");
+  Serial.println("Send the 'b' character to save snapshot (BMP) to SD Card");
+  Serial.println("Send the 'B' character to save FLEXIO snapshot (BMP) to SD Card");
+  Serial.println("send the 'r' Show Camera register settings");
+  Serial.println("send the 'v' Show VSYNCH Timing");
+  Serial.println("send the '?' character to show frame information");
+  Serial.println("Send the '1' character to blank the display");
+  Serial.println("Send the 'z' character to send current screen BMP to SD");
+  Serial.println();
 }
