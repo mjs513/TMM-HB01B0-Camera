@@ -276,11 +276,6 @@ void loop()
       }
       break;
     }
-    case '?':
-    {
-      hm01b0.captureFrameStatistics();
-      break;
-    }
     case '1':
     {
       tft.fillScreen(TFT_BLACK);
@@ -329,18 +324,6 @@ uint16_t color565(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 
-void calAE() {
-  // Calibrate Autoexposure
-  Serial.println("Calibrating Auto Exposure...");
-  memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-  if (hm01b0.cal_ae(10, frameBuffer, FRAME_WIDTH * FRAME_HEIGHT, &aecfg) != HM01B0_ERR_OK) {
-    Serial.println("\tnot converged");
-  } else {
-    Serial.println("\tconverged!");
-    hm01b0.cmdUpdate();
-  }
-}
-
 DMAMEM unsigned char image[324*244];
 void send_image() {
   uint32_t imagesize;
@@ -348,7 +331,7 @@ void send_image() {
   hm01b0.set_vflip(true);
   memset(frameBuffer, 0, sizeof(frameBuffer));
   hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-  hm01b0.readFrame(frameBuffer);
+  hm01b0.readFrameFlexIO(frameBuffer);
   
   uint32_t image_idx = 0;
   uint32_t frame_idx = 0;
@@ -473,7 +456,6 @@ void showCommandList() {
   Serial.println("Send the 'F' to start/stop continuous using FlexIO (changes hardware setup!)");
   Serial.println("Send the 'p' character to snapshot to PC on USB1");
   Serial.println("Send the 'b' character to save snapshot (BMP) to SD Card");
-  Serial.println("send the '?' character to show frame information");
   Serial.println("Send the '1' character to blank the display");
   Serial.println("Send the 'z' character to send current screen BMP to SD");
   Serial.println();

@@ -147,7 +147,7 @@ class HM01B0
 	bool stopReadFlexIO();
 #endif
 
-#if defined(DMA_Mode)
+#if defined(DMA_Mode) || defined(FlexIO_Mode)
 	// Lets try a dma version.  Doing one DMA that is synchronous does not gain anything
 	// So lets have a start, stop... Have it allocate 2 frame buffers and it's own DMA 
 	// buffers, with the option of setting your own buffers if desired.
@@ -156,7 +156,7 @@ class HM01B0
 		if (_frame_buffer_1 == fbFrom) _frame_buffer_1 = fbTo;
 		else if (_frame_buffer_2 == fbFrom) _frame_buffer_2 = fbTo;
 	}
-	bool stopReadFrameDMA();
+	bool stopReadFrameDMA();	
 	inline uint32_t frameCount() {return _dma_frame_count;}
 	inline void *frameBuffer() {return _dma_last_completed_frame;}
 	void captureFrameStatistics();
@@ -264,7 +264,7 @@ class HM01B0
 	
 	uint32_t OMV_XCLK_FREQUENCY	= 6000000;
 
-#if defined(DMA_Mode)
+#if defined(DMA_Mode) || defined(FlexIO_Mode)
 	// DMA STUFF
 	enum {DMABUFFER_SIZE=1296};  // 640x480  so 640*2*2
 	static DMAChannel _dmachannel;
@@ -276,7 +276,9 @@ class HM01B0
 	uint32_t  _dma_frame_count;
 	uint8_t *_dma_last_completed_frame;
 	// TBD Allow user to set all of the buffers...
+#endif
 
+#if defined(FlexIO_Mode)
 	DMAChannel dma_flexio;
 
 	#if defined (ARDUINO_TEENSY_MICROMOD)

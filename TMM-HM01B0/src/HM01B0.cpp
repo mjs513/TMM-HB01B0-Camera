@@ -916,8 +916,11 @@ uint8_t HM01B0::cal_ae( uint8_t CalFrames, uint8_t* Buffer, uint32_t ui32BufferL
     for (uint8_t i = 0; i < CalFrames; i++)
     {
 		set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
+#if defined(Normal_Mode)
         readFrame(Buffer);
-
+#else
+	Serial.println("Not supported in this mode");
+#endif
         ui32Err = get_ae(pAECfg);
 
         // // todo: could report out intermediate results here (without using printing - perhaps a callback function)
@@ -1357,7 +1360,7 @@ bool HM01B0::stopReadFlexIO()
 }
 #endif
 
-#if defined(DMA_Mode)
+#if defined(DMA_Mode) || defined(FlexIO_Mode)
 //======================================== DMA JUNK
 //================================================================================
 // experiment with DMA
