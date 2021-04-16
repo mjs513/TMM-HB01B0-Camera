@@ -39,7 +39,14 @@ SOFTWARE.
 #include <Arduino.h>
 #include <DMAChannel.h>
 
+//Do not touch this define
 #define SensorMonochrome 1
+
+
+// Camera access modes
+//#define Normal_Mode 1
+//#define DMA_Mode 1
+#define FlexIO_Mode 1
 
 typedef enum {
     PIXFORMAT_INVALID = 0,
@@ -122,12 +129,25 @@ class HM01B0
 	uint8_t set_mode(uint8_t Mode, uint8_t FrameCnt);
 	uint8_t cmdUpdate();
 	uint8_t loadSettings(camera_reg_settings_t settings);
-	void readFrame(void* buffer);
-	void readFrameFlexIO(void* buffer);
 	uint8_t get_ae( ae_cfg_t *psAECfg);
 	uint8_t cal_ae( uint8_t CalFrames, uint8_t* Buffer, uint32_t ui32BufferLen, ae_cfg_t* pAECfg);
 	uint16_t get_modelid();
+	int init();
+	
+	//-------------------------------------------------------
+	//normal Read mode
+#if defined(Normal_Mode)
+	void readFrame(void* buffer);
+#endif
 
+#if defined(FlexIO_Mode)
+	//FlexIO is default mode for the camera
+	void readFrameFlexIO(void* buffer);
+	bool startReadFlexIO(bool (*callback)(void *frame_buffer), void *fb1, void *fb2);
+	bool stopReadFlexIO();
+#endif
+
+#if defined(DMA_Mode)
 	// Lets try a dma version.  Doing one DMA that is synchronous does not gain anything
 	// So lets have a start, stop... Have it allocate 2 frame buffers and it's own DMA 
 	// buffers, with the option of setting your own buffers if desired.
@@ -140,11 +160,9 @@ class HM01B0
 	inline uint32_t frameCount() {return _dma_frame_count;}
 	inline void *frameBuffer() {return _dma_last_completed_frame;}
 	void captureFrameStatistics();
+#endif
 
-	bool startReadFlexIO(bool (*callback)(void *frame_buffer), void *fb1, void *fb2);
-	bool stopReadFlexIO();
-
-	int init();
+	//-------------------------------------------------------
 	
   	framesize_t framesize;
 	pixformat_t pixformat;
@@ -246,6 +264,7 @@ class HM01B0
 	
 	uint32_t OMV_XCLK_FREQUENCY	= 6000000;
 
+#if defined(DMA_Mode)
 	// DMA STUFF
 	enum {DMABUFFER_SIZE=1296};  // 640x480  so 640*2*2
 	static DMAChannel _dmachannel;
@@ -288,9 +307,30 @@ class HM01B0
 	static void frameStartInterruptFlexIO();
 	void processFrameStartInterruptFlexIO();
 	static HM01B0 *active_dma_camera;
-
+#endif
 
 };
 //Rest is TBD.
 
 #endif // __HM01B0_H__
+
+/*
+HM01B0 pin      pin#    NXP     Usage
+----------      ----    ---     -----
+FVLD/VSYNC      33      EMC_07  GPIO
+LVLD/HSYNC      32      B0_12   FlexIO2:12
+MCLK            7       B1_01   PWM
+PCLK            8       B1_00   FlexIO2:16
+D0              40      B0_04   FlexIO2:4
+D1              41      B0_05   FlexIO2:5
+D2              42      B0_06   FlexIO2:6
+D3              43      B0_07   FlexIO2:7
+D4              44      B0_08   FlexIO2:8  - probably not needed, use 4 bit mode
+D5              45      B0_09   FlexIO2:9  - probably not needed, use 4 bit mode
+D6              6       B0_10   FlexIO2:10 - probably not needed, use 4 bit mode
+D7              9       B0_11   FlexIO2:11 - probably not needed, use 4 bit mode
+TRIG            5       EMC_08  ???
+INT             29      EMC_31  ???
+SCL             19      AD_B1_0 I2C
+SDA             18      AD_B1_1 I2C
+*/

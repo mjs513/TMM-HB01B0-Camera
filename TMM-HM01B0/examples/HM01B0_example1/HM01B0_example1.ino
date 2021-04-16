@@ -1,13 +1,3 @@
-/*
- * Teensy MicroMod HM01B0 Camera
- *
- * To run the this example please uncomment all mode defines i
- * HM01B0.h header file
- * 
- */
-
-
-
 #include <stdint.h>
 #include <Wire.h>
 #include <SD.h>
@@ -84,15 +74,11 @@ uint8_t frameBuffer[(324) * 244];
 uint8_t sendImageBuf[(324) * 244 * 2];
 uint8_t frameBuffer2[(324) * 244] DMAMEM;
 
-bool g_continuous_mode = false;
-bool g_continuous_pc_mode = false;
 bool g_continuous_flex_mode = false;
 void * volatile g_new_flexio_data = nullptr;
 uint32_t g_flexio_capture_count = 0;
 uint32_t g_flexio_redraw_count = 0;
 elapsedMillis g_flexio_runtime;
-bool g_dma_mode = false;
-bool g_vsync = false;
 
 ae_cfg_t aecfg;
 elapsedMicros vsync_usec;
@@ -193,40 +179,11 @@ void setup()
 
   hm01b0.set_mode(HIMAX_MODE_STREAMING, 0); // turn on, continuous streaming mode
 
-  uint32_t pixClk;
-  hm01b0.get_vt_pix_clk(&pixClk);
-  Serial.printf("Pixel Clock: %u\n", pixClk);
-  uint32_t camClk;
-  hm01b0.getCameraClock(&camClk);
-  Serial.printf("Camera Clock: %u\n", camClk);
-
   FRAME_HEIGHT = hm01b0.h;
   FRAME_WIDTH  = hm01b0.w;
   Serial.printf("ImageSize (w,h): %d, %d\n", hm01b0.w, hm01b0.h);
 
   showCommandList();
-
-  //hm01b0.loadSettings(LOAD_WALKING1S_REG);
-  //hm01b0.set_colorbar(true);
-
-  vsync_usec = 0;
-
-
-}
-
-uint8_t *last_dma_frame_buffer = nullptr;
-uint8_t *image_buffer_display = sendImageBuf; // BUGBUG using from somewhere else for now...
-
-bool hm01b0_dma_callback(void *pfb) {
-  //Serial.printf("Callback: %x\n", (uint32_t)pfb);
-  if (tft.asyncUpdateActive()) return false; // don't use if we are already busy
-  tft.setOrigin(-2, -2);
-  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)pfb, mono_palette);
-  tft.setOrigin(0, 0);
-  tft.updateScreenAsync();
-
-  last_dma_frame_buffer = (uint8_t*)pfb;
-  return true;
 }
 
 bool hm01b0_flexio_callback(void *pfb)
@@ -236,81 +193,12 @@ bool hm01b0_flexio_callback(void *pfb)
   return true;
 }
 
-bool hm01b0_dma_callback_video(void *pfb) {
-  // just remember the last frame given to us. 
-  //Serial.printf("Callback: %x\n", (uint32_t)pfb);
-  last_dma_frame_buffer = (uint8_t*)pfb;
-  return true;
-}
-
-void tft_frame_cb() {
-  tft.setOrigin(-2, -2);
-  if (tft.subFrameCount()) {
-    // so finished drawing the top half of the display
-    tft.setClipRect(0, 0, tft.width(), tft.height() / 2);
-    tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)image_buffer_display, mono_palette);
-    // Lets play with buffers here. 
-  } else {
-    tft.setClipRect(0, tft.height() / 2, tft.width(), tft.height() / 2);      
-    tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)image_buffer_display, mono_palette);
-    if (last_dma_frame_buffer) {
-        hm01b0.changeFrameBuffer(last_dma_frame_buffer, image_buffer_display);
-        image_buffer_display = last_dma_frame_buffer;
-        last_dma_frame_buffer = nullptr;
-    }
-  }
-  tft.setOrigin(0, 0);
-  tft.setClipRect();
-}
-
 void loop()
 {
-  if (g_vsync) {
-    static int prior_vsync = LOW;
-
-    int vsync = digitalRead(33);
-
-    if (prior_vsync == LOW && vsync == HIGH) {
-      uint32_t us = vsync_usec;
-      vsync_usec = 0;
-      Serial.print("VSYNC event: ");
-      Serial.print(1000000.0f / (float)us);
-      Serial.println(" Hz");
-    }
-    prior_vsync = vsync;
-  }
-
   char ch;
   if (Serial.available()) {
     ch = Serial.read();
     switch (ch) {
-    case 's':
-    {
-      tft.fillScreen(TFT_BLACK);
-      calAE();
-      Serial.println("Reading frame");
-      memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-      hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-      hm01b0.readFrame(frameBuffer);
-      Serial.println("Finished reading frame"); Serial.flush();
-      tft.setOrigin(-2, -2);
-      tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, frameBuffer, mono_palette);
-      tft.setOrigin(0, 0);
-      ch = ' ';
-      g_continuous_mode = false;
-      break;
-    }
-    case 'c':
-    {
-      if (g_continuous_mode) {
-        g_continuous_mode = false;
-        Serial.println("*** Continuous mode turned off");
-      } else {
-        g_continuous_mode = true;
-        Serial.println("*** Continuous mode turned on");
-      }
-      break;
-    }
     case 'p':
     {
 #if defined(USB_DUAL_SERIAL) || defined(USB_TRIPLE_SERIAL)
@@ -333,7 +221,6 @@ void loop()
       Serial.println("*** Only works in USB Dual or Tripple Serial Mode ***");
 #endif
       break;
-    }
     case 'z':
     {
 #if defined(USE_SDCARD)
@@ -347,77 +234,12 @@ void loop()
       calAE();
       memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
       hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-      hm01b0.readFrame(frameBuffer);
-      save_image_SD();
-#endif
-      break;
-    }
-    case 'B':
-    {
-#if defined(USE_SDCARD)
-      calAE();
-      memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-      hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
       hm01b0.readFrameFlexIO(frameBuffer);
       save_image_SD();
       ch = ' ';
 #endif
       break;
     }
-    case 'd':
-    {
-      if (g_dma_mode) {
-        Serial.println("*** stopReadFrameDMA ***");
-        hm01b0.stopReadFrameDMA();
-        Serial.println("*** return from stopReadFrameDMA ***");
-        tft.endUpdateAsync();
-        tft.useFrameBuffer(false);
-        g_dma_mode = false;
-      } else {
-        hm01b0.startReadFrameDMA(&hm01b0_dma_callback, frameBuffer, frameBuffer2);
-        Serial.println("*** Return from startReadFrameDMA ***");
-        tft.useFrameBuffer(true);
-        //        tft.updateScreenAsync(true);
-        //        Serial.println("*** Return from updateScreenAsync ***");
-        g_dma_mode = true;
-      }
-      break;
-    }
-    case 'D':
-    {
-      hm01b0.startReadFrameDMA(nullptr, frameBuffer, frameBuffer2);
-      delay(50);
-      hm01b0.stopReadFrameDMA();
-      Serial.println("*** Return from startReadFrameDMA ***");
-      tft.setOrigin(-2, -2);
-      tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, frameBuffer, mono_palette);
-      tft.setOrigin(0, 0);
-      break;
-    }
-    case 'V':
-    {
-      if (g_dma_mode) {
-        Serial.println("*** stopReadFrameDMA ***");
-        hm01b0.stopReadFrameDMA();
-        Serial.println("*** return from stopReadFrameDMA ***");
-        tft.endUpdateAsync();
-        tft.useFrameBuffer(false);
-        g_dma_mode = false;
-      } else {  
-        hm01b0.startReadFrameDMA(&hm01b0_dma_callback_video, frameBuffer, frameBuffer2);
-        Serial.println("*** Return from startReadFrameDMA ***");
-        tft.setFrameCompleteCB(&tft_frame_cb, true);
-
-        tft.useFrameBuffer(true);
-        tft.fillScreen(TFT_BLACK);
-        tft.updateScreenAsync(true);
-        //        Serial.println("*** Return from updateScreenAsync ***");
-        g_dma_mode = true;
-      }
-      break;
-    }
-      Serial.println("Send the 'V' character DMA to TFT async continueous  ...");
-
     case 'f':
     {
       tft.useFrameBuffer(false);
@@ -432,7 +254,6 @@ void loop()
       tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, frameBuffer, mono_palette);
       tft.setOrigin(0, 0);
       ch = ' ';
-      g_continuous_mode = false;
       g_continuous_flex_mode = false;
       break;
     }
@@ -455,11 +276,6 @@ void loop()
       }
       break;
     }
-    case 'r':
-    {
-      hm01b0.showRegisters();
-      break;
-    }
     case '?':
     {
       hm01b0.captureFrameStatistics();
@@ -468,15 +284,6 @@ void loop()
     case '1':
     {
       tft.fillScreen(TFT_BLACK);
-      break;
-    }
-    case 'v':
-    {
-      if (g_vsync) {
-        g_vsync = false;
-      } else {
-        g_vsync = true;
-      }
       break;
     }
     case 0x30:
@@ -492,15 +299,6 @@ void loop()
     }
    while (Serial.read() != -1); // lets strip the rest out
    }
-
-
-  if (g_continuous_mode) {
-    memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-    hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-    hm01b0.readFrame(frameBuffer);
-    tft.setOrigin(-2, -2);
-    tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, frameBuffer, mono_palette);
-    tft.setOrigin(0, 0);
   }
 
   if ( g_continuous_flex_mode ) {
@@ -522,8 +320,8 @@ void loop()
       }
     }
   }
+  
 }
-
 
 // Pass 8-bit (each) R,G,B, get back 16-bit packed color
 uint16_t color565(uint8_t r, uint8_t g, uint8_t b) {
@@ -671,42 +469,12 @@ void save_image_SD() {
 }
 
 void showCommandList() {
-  Serial.println("Send the 's' character to read a frame ...");
   Serial.println("Send the 'f' character to read a frame using FlexIO (changes hardware setup!)");
   Serial.println("Send the 'F' to start/stop continuous using FlexIO (changes hardware setup!)");
-  Serial.println("Send the 'c' character to start/stop continuous display mode");
   Serial.println("Send the 'p' character to snapshot to PC on USB1");
-  Serial.println("Send the 'd' character to start/stop continuous display using DMA ...");
-  Serial.println("Send the 'D' character to read a singleframe using DMA ...");
-  Serial.println("Send the 'V' character DMA to TFT async continueous  ...");
   Serial.println("Send the 'b' character to save snapshot (BMP) to SD Card");
-  Serial.println("Send the 'B' character to save FLEXIO snapshot (BMP) to SD Card");
-  Serial.println("send the 'r' Show Camera register settings");
-  Serial.println("send the 'v' Show VSYNCH Timing");
   Serial.println("send the '?' character to show frame information");
   Serial.println("Send the '1' character to blank the display");
   Serial.println("Send the 'z' character to send current screen BMP to SD");
   Serial.println();
 }
-
-
-/*
-HM01B0 pin      pin#    NXP     Usage
-----------      ----    ---     -----
-FVLD/VSYNC      33      EMC_07  GPIO
-LVLD/HSYNC      32      B0_12   FlexIO2:12
-MCLK            7       B1_01   PWM
-PCLK            8       B1_00   FlexIO2:16
-D0              40      B0_04   FlexIO2:4
-D1              41      B0_05   FlexIO2:5
-D2              42      B0_06   FlexIO2:6
-D3              43      B0_07   FlexIO2:7
-D4              44      B0_08   FlexIO2:8  - probably not needed, use 4 bit mode
-D5              45      B0_09   FlexIO2:9  - probably not needed, use 4 bit mode
-D6              6       B0_10   FlexIO2:10 - probably not needed, use 4 bit mode
-D7              9       B0_11   FlexIO2:11 - probably not needed, use 4 bit mode
-TRIG            5       EMC_08  ???
-INT             29      EMC_31  ???
-SCL             19      AD_B1_0 I2C
-SDA             18      AD_B1_1 I2C
-*/
