@@ -1,5 +1,4 @@
 #include <stdint.h>
-#include <Wire.h>
 #include <SD.h>
 #include <SPI.h>
 
@@ -37,7 +36,12 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
   0x00, 0x00
 };
 
-HM01B0 hm01b0;
+/*
+ *  HM01B0_TEENSY_MICROMOD_GPIO_8BIT,
+ *  HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT,
+ *  HM01B0_TEENSY_MICROMOD_DMA_8BIT,
+ */
+HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT);
 //#define USE_SPARKFUN 1
 //#define USE_SDCARD 1
 File file;
@@ -79,6 +83,7 @@ void * volatile g_new_flexio_data = nullptr;
 uint32_t g_flexio_capture_count = 0;
 uint32_t g_flexio_redraw_count = 0;
 elapsedMillis g_flexio_runtime;
+bool g_dma_mode = false;
 
 ae_cfg_t aecfg;
 elapsedMicros vsync_usec;
@@ -105,7 +110,6 @@ void setup()
   tft.setTextSize(2);
   tft.println("Waiting for Arduino Serial Monitor...");
 
-  Wire.begin();
   Serial.begin(921600);
 
 #if defined(USE_SDCARD)
@@ -174,16 +178,32 @@ void setup()
    *  Can be 1, 2, or 3
    */
   hm01b0.set_brightness(3);
-  hm01b0.set_auto_exposure(true, 1500);  //higher the setting the less saturaturation of whiteness
+  hm01b0.set_autoExposure(true, 1500);  //higher the setting the less saturaturation of whiteness
   hm01b0.cmdUpdate();  //only need after changing auto exposure settings
 
   hm01b0.set_mode(HIMAX_MODE_STREAMING, 0); // turn on, continuous streaming mode
 
-  FRAME_HEIGHT = hm01b0.h;
-  FRAME_WIDTH  = hm01b0.w;
-  Serial.printf("ImageSize (w,h): %d, %d\n", hm01b0.w, hm01b0.h);
+  FRAME_HEIGHT = hm01b0.height();
+  FRAME_WIDTH  = hm01b0.width();
+  Serial.printf("ImageSize (w,h): %d, %d\n", FRAME_WIDTH, FRAME_HEIGHT);
 
   showCommandList();
+}
+
+
+uint8_t *last_dma_frame_buffer = nullptr;
+uint8_t *image_buffer_display = sendImageBuf; // BUGBUG using from somewhere else for now...
+
+bool hm01b0_dma_callback(void *pfb) {
+  //Serial.printf("Callback: %x\n", (uint32_t)pfb);
+  if (tft.asyncUpdateActive()) return false; // don't use if we are already busy
+  tft.setOrigin(-2, -2);
+  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)pfb, mono_palette);
+  tft.setOrigin(0, 0);
+  tft.updateScreenAsync();
+
+  last_dma_frame_buffer = (uint8_t*)pfb;
+  return true;
 }
 
 bool hm01b0_flexio_callback(void *pfb)
@@ -193,108 +213,173 @@ bool hm01b0_flexio_callback(void *pfb)
   return true;
 }
 
+bool hm01b0_dma_callback_video(void *pfb) {
+  // just remember the last frame given to us. 
+  //Serial.printf("Callback: %x\n", (uint32_t)pfb);
+  last_dma_frame_buffer = (uint8_t*)pfb;
+  return true;
+}
+
+void tft_frame_cb() {
+  tft.setOrigin(-2, -2);
+  if (tft.subFrameCount()) {
+    // so finished drawing the top half of the display
+    tft.setClipRect(0, 0, tft.width(), tft.height() / 2);
+    tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)image_buffer_display, mono_palette);
+    // Lets play with buffers here. 
+  } else {
+    tft.setClipRect(0, tft.height() / 2, tft.width(), tft.height() / 2);      
+    tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)image_buffer_display, mono_palette);
+    if (last_dma_frame_buffer) {
+        hm01b0.changeFrameBuffer(last_dma_frame_buffer, image_buffer_display);
+        image_buffer_display = last_dma_frame_buffer;
+        last_dma_frame_buffer = nullptr;
+    }
+  }
+  tft.setOrigin(0, 0);
+  tft.setClipRect();
+}
+
 void loop()
 {
   char ch;
   if (Serial.available()) {
     ch = Serial.read();
     switch (ch) {
-    case 'p':
-    {
-#if defined(USB_DUAL_SERIAL) || defined(USB_TRIPLE_SERIAL)
-      calAE();
-      memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-      hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-      hm01b0.readFrame(frameBuffer);
-      uint32_t idx = 0;
-      for (int i = 0; i < FRAME_HEIGHT * FRAME_WIDTH; i++) {
-        idx = i * 2;
-        frameBuffer[i] = color565(frameBuffer[i], frameBuffer[i], frameBuffer[i]);
-        sendImageBuf[idx + 1] = (frameBuffer[i] >> 0) & 0xFF;
-        sendImageBuf[idx] = (frameBuffer[i] >> 8) & 0xFF;
-      }
-      send_raw();
-      Serial.println("Image Sent!");
-      ch = ' ';
-      g_continuous_mode = false;
-#else
-      Serial.println("*** Only works in USB Dual or Tripple Serial Mode ***");
-#endif
-      break;
-    case 'z':
-    {
-#if defined(USE_SDCARD)
-      save_image_SD();
-#endif
-      break;
-    }
-    case 'b':
-    {
-#if defined(USE_SDCARD)
-      calAE();
-      memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-      hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-      hm01b0.readFrameFlexIO(frameBuffer);
-      save_image_SD();
-      ch = ' ';
-#endif
-      break;
-    }
-    case 'f':
-    {
-      tft.useFrameBuffer(false);
-      tft.fillScreen(TFT_BLACK);
-      //calAE();
-      Serial.println("Reading frame using FlexIO");
-      memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-      hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-      hm01b0.readFrameFlexIO(frameBuffer);
-      Serial.println("Finished reading frame"); Serial.flush();
-      tft.setOrigin(-2, -2);
-      tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, frameBuffer, mono_palette);
-      tft.setOrigin(0, 0);
-      ch = ' ';
-      g_continuous_flex_mode = false;
-      break;
-    }
-    case 'F':
-    {
-      if (!g_continuous_flex_mode) {
-        if (hm01b0.startReadFlexIO(&hm01b0_flexio_callback, frameBuffer, frameBuffer2)) {
-          Serial.println("* continuous FlexIO mode started");
-          g_flexio_capture_count = 0;
-          g_flexio_redraw_count = 0;
-          elapsedMillis g_flexio_runtime;
-          g_continuous_flex_mode = true;
-        } else {
-          Serial.println("* error, could not start continuous FlexIO mode");
+      case 'p':
+      {
+  #if defined(USB_DUAL_SERIAL) || defined(USB_TRIPLE_SERIAL)
+        calAE();
+        memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
+        hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
+        hm01b0.readFrame(frameBuffer);
+        uint32_t idx = 0;
+        for (int i = 0; i < FRAME_HEIGHT * FRAME_WIDTH; i++) {
+          idx = i * 2;
+          frameBuffer[i] = color565(frameBuffer[i], frameBuffer[i], frameBuffer[i]);
+          sendImageBuf[idx + 1] = (frameBuffer[i] >> 0) & 0xFF;
+          sendImageBuf[idx] = (frameBuffer[i] >> 8) & 0xFF;
         }
-      } else {
-        hm01b0.stopReadFlexIO();
-        g_continuous_flex_mode = false;
-        Serial.println("* continuous FlexIO mode stopped");
-      }
-      break;
-    }
-    case '1':
-    {
-      tft.fillScreen(TFT_BLACK);
-      break;
-    }
-    case 0x30:
-    {
-        Serial.println(F("ACK CMD CAM start single shoot. END"));
-        send_image();
-        Serial.println(F("READY. END"));
+        send_raw();
+        Serial.println("Image Sent!");
+        ch = ' ';
+        g_continuous_mode = false;
+  #else
+        Serial.println("*** Only works in USB Dual or Tripple Serial Mode ***");
+  #endif
         break;
-    }
-      default:
+      }
+      case 'z':
+      {
+  #if defined(USE_SDCARD)
+        save_image_SD();
+  #endif
+        break;
+      }
+      case 'b':
+      {
+  #if defined(USE_SDCARD)
+        calAE();
+        memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
+        hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
+        hm01b0.readFrame(frameBuffer);
+        save_image_SD();
+        ch = ' ';
+  #endif
+        break;
+      }
+    case 'V':
+    {
+      if(hm01b0.mode() != HM01B0_TEENSY_MICROMOD_DMA_8BIT) {
+        Serial.println("Video not supported in this mode!");
+        break;
+      }
+      if (g_dma_mode) {
+        Serial.println("*** stopReadFrameDMA ***");
+        hm01b0.stopReadContinuous();
+        Serial.println("*** return from stopReadFrameDMA ***");
+        tft.endUpdateAsync();
+        tft.useFrameBuffer(false);
+        g_dma_mode = false;
+      } else {  
+        hm01b0.readContinuous(&hm01b0_dma_callback_video, frameBuffer, frameBuffer2);
+        Serial.println("*** Return from startReadFrameDMA ***");
+        tft.setFrameCompleteCB(&tft_frame_cb, true);
+
+        tft.useFrameBuffer(true);
+        tft.fillScreen(TFT_BLACK);
+        tft.updateScreenAsync(true);
+        //        Serial.println("*** Return from updateScreenAsync ***");
+        g_dma_mode = true;
+      }
+      ch = ' ';
+      break;
+    }     
+      case 'f':
+      {
+        tft.useFrameBuffer(false);
+        tft.fillScreen(TFT_BLACK);
+        //calAE();
+        Serial.println("Reading frame using FlexIO");
+        memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
+        //hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
+        //hm01b0.readFrameFlexIO(frameBuffer);
+        hm01b0.readFrame(frameBuffer);
+        Serial.println("Finished reading frame"); Serial.flush();
+        tft.setOrigin(-2, -2);
+        tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, frameBuffer, mono_palette);
+        tft.setOrigin(0, 0);
+        ch = ' ';
+        g_continuous_flex_mode = false;
+        break;
+      }
+      case 'F':
+      {
+      if(hm01b0.mode() == HM01B0_TEENSY_MICROMOD_GPIO_8BIT) {
+        Serial.println("Continous not supported in this mode!");
+        break;
+      }
+        if (!g_continuous_flex_mode) {
+          if (hm01b0.readContinuous(&hm01b0_flexio_callback, frameBuffer, frameBuffer2)) {
+            Serial.println("* continuous FlexIO mode started");
+            g_flexio_capture_count = 0;
+            g_flexio_redraw_count = 0;
+            elapsedMillis g_flexio_runtime;
+            g_continuous_flex_mode = true;
+          } else {
+            Serial.println("* error, could not start continuous FlexIO mode");
+          }
+        } else {
+          hm01b0.stopReadContinuous();
+          g_continuous_flex_mode = false;
+          Serial.println("* continuous FlexIO mode stopped");
+        }
+        break;
+      }
+      case '1':
+      {
+        tft.fillScreen(TFT_BLACK);
+        break;
+      }
+      case 0x30:
+      {
+          Serial.println(F("ACK CMD CAM start single shoot. END"));
+          send_image();
+          Serial.println(F("READY. END"));
+          break;
+      }
+      case '?':
+      {
         showCommandList();
+        ch = ' ';
+        break;
+      }
+      default:
         break;
     }
    while (Serial.read() != -1); // lets strip the rest out
    }
-  }
+
 
   if ( g_continuous_flex_mode ) {
     if (g_new_flexio_data) {
@@ -458,5 +543,7 @@ void showCommandList() {
   Serial.println("Send the 'b' character to save snapshot (BMP) to SD Card");
   Serial.println("Send the '1' character to blank the display");
   Serial.println("Send the 'z' character to send current screen BMP to SD");
+  Serial.println("Send the 'V' character DMA to TFT async continueous  ...");
+
   Serial.println();
 }

@@ -443,8 +443,10 @@ const uint16_t sHM01B0Init_regs[][2] =
 };
 
 // Constructor
-HM01B0::HM01B0()
+HM01B0::HM01B0(hw_config_t set_hw_config)
 {
+	_hw_config = set_hw_config;
+	
 }
 
 int HM01B0::reset()
@@ -537,19 +539,19 @@ uint8_t HM01B0::set_framesize(framesize_t new_framesize)
 
     switch (framesize) {
         case FRAMESIZE_320X320:
-			w = 320; h = 320;
+			_width = 320; _height = 320;
             for (int i=0; FULL_regs[i][0] && ret == 0; i++) {
                 ret |=  cameraWriteRegister(FULL_regs[i][0], FULL_regs[i][1]);  //cambus_writeb2(&sensor->bus, sensor->slv_addr, FULL_regs[i][0], FULL_regs[i][1]
             }
             break;
         case FRAMESIZE_QVGA:
-			w = 324; h = 244;
+			_width = 324; _height = 244;
             for (int i=0; QVGA_regs[i][0] && ret == 0; i++) {
                 ret |= cameraWriteRegister( QVGA_regs[i][0], QVGA_regs[i][1]);
             }
             break;
         case FRAMESIZE_QQVGA:
-			w = 160; h = 120;
+			_width = 160; _height = 120;
             for (int i=0; QQVGA_regs[i][0] && ret == 0; i++) {
                 ret |= cameraWriteRegister( QQVGA_regs[i][0], QQVGA_regs[i][1]);
             }
@@ -653,7 +655,7 @@ int HM01B0::set_colorbar(int enable)
     return cameraWriteRegister(TEST_PATTERN_MODE, enable & 0x1);
 }
 
-int HM01B0::set_auto_gain(int enable, float gain_db, float gain_db_ceiling)
+int HM01B0::set_autoGain(int enable, float gain_db, float gain_db_ceiling)
 {
     int ret = 0;
     if ((enable == 0) && (!isnanf(gain_db)) && (!isinff(gain_db))) {
@@ -717,7 +719,7 @@ int HM01B0::getCameraClock(uint32_t *vt_pix_clk)
     return 0;
 }
 
-int HM01B0::set_auto_exposure(int enable, int exposure_us)
+int HM01B0::set_autoExposure(int enable, int exposure_us)
 {
     int ret=0;
 
@@ -848,7 +850,7 @@ uint8_t HM01B0::loadSettings(camera_reg_settings_t settings)
 			}
 			break;
 		case LOAD_SHM01B0INIT_REGS:
-			w = 320; h = 240;
+			_width = 320; _height = 240;
 			framesize = FRAMESIZE_QVGA;
 			for (int i=0; sHM01B0Init_regs[i][0] && ret == 0; i++) {
 				ret |=  cameraWriteRegister(sHM01B0Init_regs[i][0], sHM01B0Init_regs[i][1]);  
@@ -989,6 +991,19 @@ uint8_t HM01B0::get_ae( ae_cfg_t *psAECfg)
 
 int HM01B0::init()
 {
+	Wire.begin();
+	
+	if(_hw_config == HM01B0_SPARKFUN_ML_CARRIER || _hw_config == HM01B0_TEENSY_MICROMOD_GPIO_8BIT || _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT ||  _hw_config == HM01B0_TEENSY_MICROMOD_DMA_8BIT) {
+		VSYNC_PIN = 33;
+		PCLK_PIN = 8;
+		HSYNC_PIN = 32;
+		MCLK_PIN = 7;
+		EN_PIN = 2;
+		G0 = 40; G1 = 41;  G2 = 42;	G3 = 43;
+		G4 = 44; G5 = 45;  G6 = 6;
+		G7 = 9;
+	}
+		
 	pinMode(VSYNC_PIN, INPUT_PULLDOWN); // VSYNC Pin
 	pinMode(PCLK_PIN, INPUT_PULLDOWN);  //PCLK
 	pinMode(HSYNC_PIN, INPUT_PULLDOWN);  //HSYNC
@@ -1001,7 +1016,6 @@ int HM01B0::init()
 	{
 		pinMode(pin, INPUT_PULLUP);
 	}
-	//mmBus.pinMode(INPUT);
 	
 	_vsyncMask = digitalPinToBitMask(VSYNC_PIN);
     _hrefMask = digitalPinToBitMask(HSYNC_PIN);
@@ -1021,6 +1035,12 @@ int HM01B0::init()
 	analogWrite(MCLK_PIN, 128);
 	delay(5);
 	
+	
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT ||  _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT ) {
+		flexio_configure();
+	}
+	
+	
     set_pixformat(PIXFORMAT_GRAYSCALE);    //Sparkfun camera only supports grayscale
 	
 	//set_mode(HIMAX_MODE_STREAMING,0);
@@ -1028,8 +1048,45 @@ int HM01B0::init()
     return 0;
 }
 
-#if defined(Normal_Mode)
-void HM01B0::readFrame(void* buffer)
+#define FLEXIO_USE_DMA
+
+void HM01B0::readFrame(void* buffer){
+	set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
+	
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_GPIO_8BIT) {
+		readFrameGPIO(buffer);
+	} else 
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT) {
+		readFrameFlexIO(buffer);
+	} else
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_DMA_8BIT) {
+		startReadFrameDMA(nullptr, (uint8_t*) buffer, nullptr);
+		delay(50);
+		stopReadFrameDMA();
+	}
+	
+}
+
+
+bool HM01B0::readContinuous(bool(*callback)(void *frame_buffer), void *fb1, void *fb2) {
+	set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT) {
+		return startReadFlexIO(callback, fb1, fb2);
+	} else if(_hw_config == HM01B0_TEENSY_MICROMOD_DMA_8BIT) {
+		return startReadFrameDMA(callback, fb1, fb2);
+	} else {
+		return -1;
+	}
+}
+
+void HM01B0::stopReadContinuous() {
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT) stopReadFlexIO();
+	else 
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_DMA_8BIT) stopReadFrameDMA(); 
+	
+}
+
+void HM01B0::readFrameGPIO(void* buffer)
 {
 
   uint8_t* b = (uint8_t*)buffer;
@@ -1038,10 +1095,10 @@ void HM01B0::readFrame(void* buffer)
   //Change for Monodchrome only Sparkfun HB01b0
   #if defined(SensorMonochrome) 
 	_grayscale = false;
-	bytesPerRow = w ;
+	bytesPerRow = _width ;
   #else
 	_grayscale = (pixformat == PIXFORMAT_GRAYSCALE);
-	bytesPerRow = w * 2;
+	bytesPerRow = _width * 2;
   #endif
 
   // Falling edge indicates start of frame
@@ -1054,7 +1111,7 @@ void HM01B0::readFrame(void* buffer)
     while ((*_vsyncPort & _vsyncMask) != 0); // wait for LOW
   } while (emHigh < 2);
 
-  for (int i = 0; i < h; i++) {
+  for (int i = 0; i < _height; i++) {
     // rising edge indicates start of line
     while ((*_hrefPort & _hrefMask) == 0); // wait for HIGH
     while ((*_pclkPort & _pclkMask) != 0); // wait for LOW
@@ -1067,11 +1124,7 @@ void HM01B0::readFrame(void* buffer)
       //uint32_t in = ((_frame_buffer_pointer)? GPIO1_DR : GPIO6_DR) >> 18; // read all bits in parallel
       uint32_t in =  (GPIO7_PSR >> 4); // read all bits in parallel
 	  //uint32_t in = mmBus;
-	  
-	  //Change for Monodchrome only HB01b0
-	  #if defined(SensorMonochrome) 
-		_grayscale = false;
-	  #endif
+
       if (!(j & 1) || !_grayscale) {
         *b++ = in;
       }
@@ -1085,62 +1138,66 @@ void HM01B0::readFrame(void* buffer)
    set_mode(HIMAX_MODE_STREAMING, 0);
 
 }
-#endif
 
-#if defined(FlexIO_Mode)
-static void flexio_configure()
+void HM01B0::flexio_configure()
 {
 	// do nothing is FlexIO already enabled, assume already set up
 	if ((CCM_CCGR3 & CCM_CCGR3_FLEXIO2(CCM_CCGR_ON)) != 0) return;
 
-	//Serial.println("FlexIO Configure");
-	//Serial.printf(" CCM_CSCMR2 = %08X\n", CCM_CSCMR2);
+
 	CCM_CSCMR2 |= CCM_CSCMR2_FLEXIO2_CLK_SEL(3); // 480 MHz from USB PLL
 
 	CCM_CS1CDR = (CCM_CS1CDR
 		& ~(CCM_CS1CDR_FLEXIO2_CLK_PRED(7) | CCM_CS1CDR_FLEXIO2_CLK_PODF(7)))
 		| CCM_CS1CDR_FLEXIO2_CLK_PRED(1) | CCM_CS1CDR_FLEXIO2_CLK_PODF(1);
 
-	//uint32_t div1 = ((CCM_CS1CDR >> 9) & 7) + 1;
-	//uint32_t div2 = ((CCM_CS1CDR >> 25) & 7) + 1;
-	//Serial.printf(" div1 = %u, div2 = %u\n", div1, div2);
-	//Serial.printf(" FlexIO2 Frequency = %.2f MHz\n", 480.0 / (float)div1 / (float)div2);
 
 	CCM_CCGR3 |= CCM_CCGR3_FLEXIO2(CCM_CCGR_ON);
-	//Serial.printf(" CCM_CCGR3 = %08X\n", CCM_CCGR3);
-	//Serial.printf(" FLEXIO2_CTRL = %08X\n", FLEXIO2_CTRL);
+	
 
-	//Serial.printf(" FlexIO2 Config, param=%08X\n", FLEXIO2_PARAM);
+#ifdef DEBUG_FLEXIO
+	Serial.println("FlexIO Configure");
+	Serial.printf(" CCM_CSCMR2 = %08X\n", CCM_CSCMR2);
+	uint32_t div1 = ((CCM_CS1CDR >> 9) & 7) + 1;
+	uint32_t div2 = ((CCM_CS1CDR >> 25) & 7) + 1;
+	Serial.printf(" div1 = %u, div2 = %u\n", div1, div2);
+	Serial.printf(" FlexIO2 Frequency = %.2f MHz\n", 480.0 / (float)div1 / (float)div2);
+	Serial.printf(" CCM_CCGR3 = %08X\n", CCM_CCGR3);
+	Serial.printf(" FLEXIO2_CTRL = %08X\n", FLEXIO2_CTRL);
+	Serial.printf(" FlexIO2 Config, param=%08X\n", FLEXIO2_PARAM);
+#endif
+	
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT) {
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_00 = 4; // B1_00 = FlexIO2:16 = PCLK
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_04 = 4; // B0_04 = FlexIO2:4  = D0
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_05 = 4; // B0_05 = FlexIO2:5  = D1
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_06 = 4; // B0_06 = FlexIO2:6  = D2
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_07 = 4; // B0_07 = FlexIO2:7  = D3
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_08 = 4; // B0_08 = FlexIO2:8  = D4
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_09 = 4; // B0_09 = FlexIO2:9  = D5
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_10 = 4; // B0_10 = FlexIO2:10 = D6
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_11 = 4; // B0_11 = FlexIO2:11 = D7
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_12 = 4; // B0_12 = FlexIO2:12 = HSYNC
 
-	IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_00 = 4; // B1_00 = FlexIO2:16 = PCLK
-	IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_04 = 4; // B0_04 = FlexIO2:4  = D0
-	IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_05 = 4; // B0_05 = FlexIO2:5  = D1
-	IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_06 = 4; // B0_06 = FlexIO2:6  = D2
-	IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_07 = 4; // B0_07 = FlexIO2:7  = D3
-	IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_08 = 4; // B0_08 = FlexIO2:8  = D4
-	IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_09 = 4; // B0_09 = FlexIO2:9  = D5
-	IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_10 = 4; // B0_10 = FlexIO2:10 = D6
-	IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_11 = 4; // B0_11 = FlexIO2:11 = D7
-	IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_12 = 4; // B0_12 = FlexIO2:12 = HSYNC
+		// SHIFTCFG, page 2927
+		//  PWIDTH: number of bits to be shifted on each Shift clock
+		//          0 = 1 bit, 1-3 = 4 bit, 4-7 = 8 bit, 8-15 = 16 bit, 16-31 = 32 bit
+		//  INSRC: Input Source, 0 = pin, 1 = Shifter N+1 Output
+		//  SSTOP: Stop bit, 0 = disabled, 1 = match, 2 = use zero, 3 = use one
+		//  SSTART: Start bit, 0 = disabled, 1 = disabled, 2 = use zero, 3 = use one
+		FLEXIO2_SHIFTCFG3 = FLEXIO_SHIFTCFG_PWIDTH(7);
 
-	// SHIFTCFG, page 2927
-	//  PWIDTH: number of bits to be shifted on each Shift clock
-	//          0 = 1 bit, 1-3 = 4 bit, 4-7 = 8 bit, 8-15 = 16 bit, 16-31 = 32 bit
-	//  INSRC: Input Source, 0 = pin, 1 = Shifter N+1 Output
-	//  SSTOP: Stop bit, 0 = disabled, 1 = match, 2 = use zero, 3 = use one
-	//  SSTART: Start bit, 0 = disabled, 1 = disabled, 2 = use zero, 3 = use one
-	FLEXIO2_SHIFTCFG3 = FLEXIO_SHIFTCFG_PWIDTH(7);
-
-	// SHIFTCTL, page 2926
-	//  TIMSEL: which Timer is used for controlling the logic/shift register
-	//  TIMPOL: 0 = shift of positive edge, 1 = shift on negative edge
-	//  PINCFG: 0 = output disabled, 1 = open drain, 2 = bidir, 3 = output
-	//  PINSEL: which pin is used by the Shifter input or output
-	//  PINPOL: 0 = active high, 1 = active low
-	//  SMOD: 0 = disable, 1 = receive, 2 = transmit, 4 = match store,
-	//        5 = match continuous, 6 = state machine, 7 = logic
-	FLEXIO2_SHIFTCTL3 = FLEXIO_SHIFTCTL_TIMSEL(2) | FLEXIO_SHIFTCTL_SMOD(1)
-		| FLEXIO_SHIFTCTL_PINSEL(4); // 4 = D0
+		// SHIFTCTL, page 2926
+		//  TIMSEL: which Timer is used for controlling the logic/shift register
+		//  TIMPOL: 0 = shift of positive edge, 1 = shift on negative edge
+		//  PINCFG: 0 = output disabled, 1 = open drain, 2 = bidir, 3 = output
+		//  PINSEL: which pin is used by the Shifter input or output
+		//  PINPOL: 0 = active high, 1 = active low
+		//  SMOD: 0 = disable, 1 = receive, 2 = transmit, 4 = match store,
+		//        5 = match continuous, 6 = state machine, 7 = logic
+		FLEXIO2_SHIFTCTL3 = FLEXIO_SHIFTCTL_TIMSEL(2) | FLEXIO_SHIFTCTL_SMOD(1)
+			| FLEXIO_SHIFTCTL_PINSEL(4); // 4 = D0
+	}
 
 	// Timer model, pages 2891-2893
 	// TIMCMP, page 2937
@@ -1216,12 +1273,10 @@ static void flexio_configure()
 }
 
 
-#define FLEXIO_USE_DMA
-
 void HM01B0::readFrameFlexIO(void* buffer)
 {
-	flexio_configure(); // one-time hardware setup
-
+	//flexio_configure(); // one-time hardware setup
+Serial.println("Reading FlexIO frame.......................................");
 	// wait for VSYNC to be low
 	while ((*_vsyncPort & _vsyncMask) != 0);
 	FLEXIO2_SHIFTSTAT = 0x08; // clear any prior shift status
@@ -1230,7 +1285,7 @@ void HM01B0::readFrameFlexIO(void* buffer)
 #ifndef FLEXIO_USE_DMA
 	// read FlexIO by polling
 	uint32_t *p = (uint32_t *)buffer;
-	uint32_t *p_end = (uint32_t *)buffer + 324*244/4;
+	uint32_t *p_end = (uint32_t *)buffer + _width*_height/4;
 
 	while (p < p_end) {
 		while ((FLEXIO2_SHIFTSTAT & 0x08) == 0) {
@@ -1241,7 +1296,7 @@ void HM01B0::readFrameFlexIO(void* buffer)
 #else
 	// read FlexIO by DMA
 	dma_flexio.begin();
-	const uint32_t length = 324*244;
+	const uint32_t length = _width*_height;
 	dma_flexio.source(FLEXIO2_SHIFTBUF3);
 	dma_flexio.destinationBuffer((uint32_t *)buffer, length);
 	dma_flexio.transferSize(4);
@@ -1287,7 +1342,7 @@ bool HM01B0::startReadFlexIO(bool(*callback)(void *frame_buffer), void *fb1, voi
 
 	flexio_configure(); // one-time hardware setup
 	dma_flexio.begin();
-	const uint32_t length = 324*244;
+	const uint32_t length = _width*_height;
 	dma_flexio.source(FLEXIO2_SHIFTBUF3);
 	dma_flexio.destinationBuffer((uint32_t *)fb1, length);
 	dma_flexio.transferSize(4);
@@ -1321,7 +1376,7 @@ void HM01B0::processFrameStartInterruptFlexIO()
 
 	// TODO: could a prior status have a DMA request still be pending?
 	void *dest = (_dma_frame_count & 1) ? _frame_buffer_2 : _frame_buffer_1;
-	const uint32_t length = 324*244;
+	const uint32_t length = _width*_height;
 	//dma_flexio.TCD->DADDR = dest;
 	dma_flexio.destinationBuffer((uint32_t *)dest, length);
 	dma_flexio.transferSize(4);
@@ -1341,7 +1396,7 @@ void HM01B0::processDMAInterruptFlexIO()
 	dma_flexio.clearInterrupt();
 	if (dma_flexio.error()) return; // TODO: report or handle error??
 	void *dest = (_dma_frame_count & 1) ? _frame_buffer_2 : _frame_buffer_1;
-	const uint32_t length = 324*244;
+	const uint32_t length = _width*_height;
 	_dma_frame_count++;
 	arm_dcache_delete(dest, length);
 	if (_callback) (*_callback)(dest); // TODO: use EventResponder
@@ -1358,9 +1413,8 @@ bool HM01B0::stopReadFlexIO()
 	_callback = nullptr;
 	return true;
 }
-#endif
 
-#if defined(DMA_Mode) || defined(FlexIO_Mode)
+
 //======================================== DMA JUNK
 //================================================================================
 // experiment with DMA
@@ -1393,12 +1447,12 @@ bool HM01B0::startReadFrameDMA(bool(*callback)(void *frame_buffer), uint8_t *fb1
   // First see if we need to allocate frame buffers.
   if (fb1) _frame_buffer_1 = fb1;
   else if (_frame_buffer_1 == nullptr) {
-    _frame_buffer_1 = (uint8_t*)malloc(w * h );
+    _frame_buffer_1 = (uint8_t*)malloc(_width * _height );
     if (_frame_buffer_1 == nullptr) return false;
   }
   if (fb2) _frame_buffer_2 = fb2;
   else if (_frame_buffer_2 == nullptr) {
-    _frame_buffer_2 = (uint8_t*)malloc(w * h );
+    _frame_buffer_2 = (uint8_t*)malloc(_width * _height);
     if (_frame_buffer_2 == nullptr) return false; // BUGBUG should we 32 byte align?
   }
   // remember the call back if passed in
@@ -1540,7 +1594,7 @@ void  HM01B0::frameStartInterrupt() {
 }
 
 void  HM01B0::processFrameStartInterrupt() {
-  _bytes_left_dma = (w + _frame_ignore_cols) * h; // for now assuming color 565 image...
+  _bytes_left_dma = (_width + _frame_ignore_cols) * _height; // for now assuming color 565 image...
   _dma_index = 0;
   _frame_col_index = 0;  // which column we are in a row
   _frame_row_index = 0;  // which row
@@ -1607,13 +1661,13 @@ void HM01B0::processDMAInterrupt() {
 #endif
 
   for (uint16_t buffer_index = 0; buffer_index < buffer_size; buffer_index++) {
-    if (!_bytes_left_dma || (_frame_row_index >= h)) break;
+    if (!_bytes_left_dma || (_frame_row_index >= _height)) break;
 
     // only process if href high...
     uint16_t b = *buffer >> 4;
     *_frame_buffer_pointer++ = b;
     _frame_col_index++;
-    if (_frame_col_index == w) {
+    if (_frame_col_index == _width) {
         // we just finished a row.
         _frame_row_index++;
         _frame_col_index = 0;
@@ -1622,7 +1676,7 @@ void HM01B0::processDMAInterrupt() {
     buffer++;
   }
 
-  if ((_frame_row_index == h) || (_bytes_left_dma == 0)) { // We finished a frame lets bail
+  if ((_frame_row_index == _height) || (_bytes_left_dma == 0)) { // We finished a frame lets bail
     _dmachannel.disable();  // disable the DMA now...
     //DebugDigitalWrite(OV7670_DEBUG_PIN_2, LOW);
 #ifdef DEBUG_CAMERA_VERBOSE
@@ -1656,7 +1710,7 @@ void HM01B0::processDMAInterrupt() {
       // We need to start up our ISR for the next frame. 
 #if 1
   // bypass interrupt and just restart DMA... 
-  _bytes_left_dma = (w + _frame_ignore_cols) * h; // for now assuming color 565 image...
+  _bytes_left_dma = (_width + _frame_ignore_cols) * _height; // for now assuming color 565 image...
   _dma_index = 0;
   _frame_col_index = 0;  // which column we are in a row
   _frame_row_index = 0;  // which row
@@ -1683,7 +1737,6 @@ void HM01B0::processDMAInterrupt() {
   }
   //DebugDigitalWrite(OV7670_DEBUG_PIN_3, LOW);
 }
-#endif
 
 typedef struct {
     uint32_t frameTimeMicros;
