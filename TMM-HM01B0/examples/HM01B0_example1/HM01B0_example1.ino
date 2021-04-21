@@ -36,12 +36,21 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
   0x00, 0x00
 };
 
-/*
- *  HM01B0_TEENSY_MICROMOD_GPIO_8BIT,
- *  HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT,
- *  HM01B0_TEENSY_MICROMOD_DMA_8BIT,
- */
+
+#define _hmConfig 2 // select mode string below
+
+PROGMEM const char hmConfig[][48] = {
+ "HM01B0_TEENSY_MICROMOD_GPIO_8BIT",
+ "HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT",
+ "HM01B0_TEENSY_MICROMOD_DMA_8BIT" };
+#if _hmConfig ==0
+HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_GPIO_8BIT);
+#elif _hmConfig ==1
+HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT);
+#elif _hmConfig ==2
 HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_DMA_8BIT);
+#endif
+
 //#define USE_SPARKFUN 1
 //#define USE_SDCARD 1
 File file;
@@ -78,6 +87,7 @@ uint8_t frameBuffer[(324) * 244];
 uint8_t sendImageBuf[(324) * 244 * 2];
 uint8_t frameBuffer2[(324) * 244] DMAMEM;
 
+bool g_continuous_mode = false;
 bool g_continuous_flex_mode = false;
 void * volatile g_new_flexio_data = nullptr;
 uint32_t g_flexio_capture_count = 0;
@@ -86,7 +96,6 @@ elapsedMillis g_flexio_runtime;
 bool g_dma_mode = false;
 
 ae_cfg_t aecfg;
-elapsedMicros vsync_usec;
 
 void setup()
 {
@@ -128,6 +137,7 @@ void setup()
 
   while (!Serial) ;
   Serial.println("HM01B0 Camera Test");
+  Serial.println( hmConfig[_hmConfig] );
   Serial.println("------------------");
 
   hm01b0.init();
@@ -216,6 +226,11 @@ bool hm01b0_flexio_callback(void *pfb)
 bool hm01b0_dma_callback_video(void *pfb) {
   // just remember the last frame given to us. 
   //Serial.printf("Callback: %x\n", (uint32_t)pfb);
+  if (tft.asyncUpdateActive()) return false; // don't use if we are already busy
+  tft.setOrigin(-2, -2);
+  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)pfb, mono_palette);
+  tft.setOrigin(0, 0);
+  tft.updateScreenAsync();
   last_dma_frame_buffer = (uint8_t*)pfb;
   return true;
 }
@@ -284,7 +299,7 @@ void loop()
         hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
         hm01b0.readFrame(frameBuffer);
         save_image_SD();
-        ch = ' ';
+        ch = ' '; 
   #endif
         break;
       }
@@ -296,14 +311,16 @@ void loop()
       }
      if (g_dma_mode) {
         Serial.println("*** stopReadFrameDMA ***");
-        hm01b0.stopReadFrameDMA();
+        hm01b0.stopReadContinuous();
         Serial.println("*** return from stopReadFrameDMA ***");
         tft.endUpdateAsync();
         tft.useFrameBuffer(false);
         g_dma_mode = false;
       } else {  
-        uint8_t status = hm01b0.startReadFrameDMA(&hm01b0_dma_callback_video, frameBuffer, frameBuffer2);
-        Serial.println("*** Return from startReadFrameDMA ***");
+        uint8_t status = hm01b0.readContinuous(&hm01b0_dma_callback_video, frameBuffer, frameBuffer2);
+        if ( !status ) {
+          Serial.print( "FALSE Return value from startReadFrameDMA " );
+        }
         tft.setFrameCompleteCB(&tft_frame_cb, true);
 
         tft.useFrameBuffer(true);
@@ -318,13 +335,15 @@ void loop()
 
       case 'f':
       {
+        if (g_dma_mode) {
+          Serial.println("Must stop Video first!");
+          break;
+        }
         tft.useFrameBuffer(false);
         tft.fillScreen(TFT_BLACK);
         //calAE();
         Serial.println("Reading frame");
         memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-        //hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-        //hm01b0.readFrameFlexIO(frameBuffer);
         hm01b0.readFrame(frameBuffer);
         Serial.println("Finished reading frame"); Serial.flush();
         tft.setOrigin(-2, -2);
@@ -336,16 +355,21 @@ void loop()
       }
       case 'F':
       {
-      if(hm01b0.mode() == HM01B0_TEENSY_MICROMOD_GPIO_8BIT) {
-        Serial.println("Continous not supported in this mode!");
-        break;
-      }
+        if(hm01b0.mode() == HM01B0_TEENSY_MICROMOD_GPIO_8BIT) {
+          if (g_continuous_mode) {
+            g_continuous_mode = false;
+            Serial.println("*** Continuous mode turned off");
+          } else {
+            g_continuous_mode = true;
+            Serial.println("*** Continuous mode turned on");
+          }
+          break;
+        }
         if (!g_continuous_flex_mode) {
           if (hm01b0.readContinuous(&hm01b0_flexio_callback, frameBuffer, frameBuffer2)) {
             Serial.println("* continuous mode started");
             g_flexio_capture_count = 0;
             g_flexio_redraw_count = 0;
-            elapsedMillis g_flexio_runtime;
             g_continuous_flex_mode = true;
           } else {
             Serial.println("* error, could not start continuous mode");
@@ -401,7 +425,15 @@ void loop()
       }
     }
   }
-  
+
+  if (g_continuous_mode) {
+    memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
+    hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
+    hm01b0.readFrame(frameBuffer);
+    tft.setOrigin(-2, -2);
+    tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, frameBuffer, mono_palette);
+    tft.setOrigin(0, 0);
+  }
 }
 
 // Pass 8-bit (each) R,G,B, get back 16-bit packed color
