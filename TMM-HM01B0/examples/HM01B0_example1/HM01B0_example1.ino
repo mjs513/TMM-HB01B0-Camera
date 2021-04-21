@@ -41,7 +41,7 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
  *  HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT,
  *  HM01B0_TEENSY_MICROMOD_DMA_8BIT,
  */
-HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT);
+HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_DMA_8BIT);
 //#define USE_SPARKFUN 1
 //#define USE_SDCARD 1
 File file;
@@ -294,15 +294,15 @@ void loop()
         Serial.println("Video not supported in this mode!");
         break;
       }
-      if (g_dma_mode) {
+     if (g_dma_mode) {
         Serial.println("*** stopReadFrameDMA ***");
-        hm01b0.stopReadContinuous();
+        hm01b0.stopReadFrameDMA();
         Serial.println("*** return from stopReadFrameDMA ***");
         tft.endUpdateAsync();
         tft.useFrameBuffer(false);
         g_dma_mode = false;
       } else {  
-        hm01b0.readContinuous(&hm01b0_dma_callback_video, frameBuffer, frameBuffer2);
+        uint8_t status = hm01b0.startReadFrameDMA(&hm01b0_dma_callback_video, frameBuffer, frameBuffer2);
         Serial.println("*** Return from startReadFrameDMA ***");
         tft.setFrameCompleteCB(&tft_frame_cb, true);
 
@@ -312,15 +312,16 @@ void loop()
         //        Serial.println("*** Return from updateScreenAsync ***");
         g_dma_mode = true;
       }
-      ch = ' ';
       break;
     }     
+          Serial.println("Send the 'V' character DMA to TFT async continueous  ...");
+
       case 'f':
       {
         tft.useFrameBuffer(false);
         tft.fillScreen(TFT_BLACK);
         //calAE();
-        Serial.println("Reading frame using FlexIO");
+        Serial.println("Reading frame");
         memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
         //hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
         //hm01b0.readFrameFlexIO(frameBuffer);
@@ -341,18 +342,18 @@ void loop()
       }
         if (!g_continuous_flex_mode) {
           if (hm01b0.readContinuous(&hm01b0_flexio_callback, frameBuffer, frameBuffer2)) {
-            Serial.println("* continuous FlexIO mode started");
+            Serial.println("* continuous mode started");
             g_flexio_capture_count = 0;
             g_flexio_redraw_count = 0;
             elapsedMillis g_flexio_runtime;
             g_continuous_flex_mode = true;
           } else {
-            Serial.println("* error, could not start continuous FlexIO mode");
+            Serial.println("* error, could not start continuous mode");
           }
         } else {
           hm01b0.stopReadContinuous();
           g_continuous_flex_mode = false;
-          Serial.println("* continuous FlexIO mode stopped");
+          Serial.println("* continuous mode stopped");
         }
         break;
       }
@@ -416,7 +417,7 @@ void send_image() {
   hm01b0.set_vflip(true);
   memset(frameBuffer, 0, sizeof(frameBuffer));
   hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-  hm01b0.readFrameFlexIO(frameBuffer);
+  hm01b0.readFrame(frameBuffer);
   
   uint32_t image_idx = 0;
   uint32_t frame_idx = 0;

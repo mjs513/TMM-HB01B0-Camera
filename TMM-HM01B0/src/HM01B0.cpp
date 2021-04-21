@@ -918,11 +918,7 @@ uint8_t HM01B0::cal_ae( uint8_t CalFrames, uint8_t* Buffer, uint32_t ui32BufferL
     for (uint8_t i = 0; i < CalFrames; i++)
     {
 		set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-#if defined(Normal_Mode)
         readFrame(Buffer);
-#else
-	Serial.println("Not supported in this mode");
-#endif
         ui32Err = get_ae(pAECfg);
 
         // // todo: could report out intermediate results here (without using printing - perhaps a callback function)
@@ -1069,11 +1065,10 @@ void HM01B0::readFrame(void* buffer){
 
 
 bool HM01B0::readContinuous(bool(*callback)(void *frame_buffer), void *fb1, void *fb2) {
-	set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
 	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT) {
 		return startReadFlexIO(callback, fb1, fb2);
 	} else if(_hw_config == HM01B0_TEENSY_MICROMOD_DMA_8BIT) {
-		return startReadFrameDMA(callback, fb1, fb2);
+		return startReadFrameDMA(callback, (uint8_t*) fb1, (uint8_t*)fb2);
 	} else {
 		return -1;
 	}
