@@ -187,6 +187,7 @@ const uint16_t QVGA_regs[][2] = {
     {FRAME_LEN_LINES_L,     (HIMAX_FRAME_LENGTH_QVGA&0xFF)},
     {LINE_LEN_PCK_H,        (HIMAX_LINE_LEN_PCK_QVGA>>8)},
     {LINE_LEN_PCK_L,        (HIMAX_LINE_LEN_PCK_QVGA&0xFF)},
+	{BIT_CONTROL,			0x02},
     {GRP_PARAM_HOLD,        0x01},
     //============= End of regs marker ==================
     {0x0000,            0x00},
@@ -556,6 +557,13 @@ uint8_t HM01B0::set_framesize(framesize_t new_framesize)
                 ret |= cameraWriteRegister( QQVGA_regs[i][0], QQVGA_regs[i][1]);
             }
             break;
+        case FRAMESIZE_QVGA4BIT:
+			_width = 324; _height = 244;
+            for (int i=0; QVGA_regs[i][0] && ret == 0; i++) {
+                ret |= cameraWriteRegister( QVGA_regs[i][0], QVGA_regs[i][1]);
+            }
+			ret = cameraWriteRegister(BIT_CONTROL, 0x42);
+            break;
 		case FRAMESIZE_INVALID:
             for (int i=0; default_regs[i][0] && ret == 0; i++) {
                 ret |= cameraWriteRegister( default_regs[i][0], default_regs[i][1]);
@@ -855,9 +863,7 @@ uint8_t HM01B0::loadSettings(camera_reg_settings_t settings)
 			for (int i=0; sHM01B0Init_regs[i][0] && ret == 0; i++) {
 				ret |=  cameraWriteRegister(sHM01B0Init_regs[i][0], sHM01B0Init_regs[i][1]);  
 			}
-			break;
-			
-			
+			break;		
 		default:
 			ret = -1;
 	}
@@ -999,6 +1005,16 @@ int HM01B0::init()
 		G4 = 44; G5 = 45;  G6 = 6;
 		G7 = 9;
 	}
+	
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_GPIO_4BIT) {
+		VSYNC_PIN = 33;
+		PCLK_PIN = 8;
+		HSYNC_PIN = 32;
+		MCLK_PIN = 7;
+		EN_PIN = 2;
+		G0 = 40; G1 = 41;  G2 = 42;	G3 = 43;
+	}
+		
 		
 	pinMode(VSYNC_PIN, INPUT_PULLDOWN); // VSYNC Pin
 	pinMode(PCLK_PIN, INPUT_PULLDOWN);  //PCLK
@@ -1008,9 +1024,16 @@ int HM01B0::init()
 	 * https://forum.pjrc.com/threads/66771-MicroMod-Beta-Testing?p=275567&viewfull=1#post275567
 	 * This interesting too: https://forum.pjrc.com/threads/57698-Parallel-IO-is-it-possible?p=216501&viewfull=1#post216501
 	*/
-	for (uint8_t pin : {G0, G1, G2, G3, G4, G5, G6, G7})
-	{
-		pinMode(pin, INPUT_PULLUP);
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_GPIO_4BIT) {
+		for (uint8_t pin : {G0, G1, G2, G3})
+		{
+			pinMode(pin, INPUT_PULLUP);
+		}
+	} else {
+		for (uint8_t pin : {G0, G1, G2, G3, G4, G5, G6, G7})
+		{
+			pinMode(pin, INPUT_PULLUP);
+		}
 	}
 	
 	_vsyncMask = digitalPinToBitMask(VSYNC_PIN);
@@ -1032,12 +1055,11 @@ int HM01B0::init()
 	delay(5);
 	
 	
-	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT ||  _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT ) {
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT ) {
 		flexio_configure();
 	}
 	
-	
-    set_pixformat(PIXFORMAT_GRAYSCALE);    //Sparkfun camera only supports grayscale
+	set_pixformat(PIXFORMAT_GRAYSCALE);    //Sparkfun camera only supports grayscale
 	
 	//set_mode(HIMAX_MODE_STREAMING,0);
 		
@@ -1052,6 +1074,9 @@ void HM01B0::readFrame(void* buffer){
 	if(_hw_config == HM01B0_TEENSY_MICROMOD_GPIO_8BIT) {
 		readFrameGPIO(buffer);
 	} else 
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_GPIO_4BIT) {
+		readFrame4BitGPIO(buffer);
+	} else 
 	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT) {
 		readFrameFlexIO(buffer);
 	} else
@@ -1065,6 +1090,8 @@ void HM01B0::readFrame(void* buffer){
 
 
 bool HM01B0::readContinuous(bool(*callback)(void *frame_buffer), void *fb1, void *fb2) {
+	set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
+
 	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT) {
 		return startReadFlexIO(callback, fb1, fb2);
 	} else if(_hw_config == HM01B0_TEENSY_MICROMOD_DMA_8BIT) {
@@ -1133,6 +1160,69 @@ void HM01B0::readFrameGPIO(void* buffer)
    set_mode(HIMAX_MODE_STREAMING, 0);
 
 }
+
+void HM01B0::readFrame4BitGPIO(void* buffer)
+{
+
+  uint8_t* b = (uint8_t*)buffer;
+  bool _grayscale;
+  int bytesPerRow;
+  uint8_t in0;
+  
+  //Change for Monodchrome only Sparkfun HB01b0
+  #if defined(SensorMonochrome) 
+	_grayscale = false;
+	bytesPerRow = _width * 2;
+  #else
+	_grayscale = (pixformat == PIXFORMAT_GRAYSCALE);
+	bytesPerRow = _width * 2 * 2;
+  #endif
+
+  // Falling edge indicates start of frame
+  //pinMode(PCLK_PIN, INPUT); // make sure back to input pin...
+  // lets add our own glitch filter.  Say it must be hig for at least 100us
+  elapsedMicros emHigh;
+  do {
+    while ((*_vsyncPort & _vsyncMask) == 0); // wait for HIGH
+    emHigh = 0;
+    while ((*_vsyncPort & _vsyncMask) != 0); // wait for LOW
+  } while (emHigh < 2);
+
+  for (int i = 0; i < _height; i++) {
+    // rising edge indicates start of line
+    while ((*_hrefPort & _hrefMask) == 0); // wait for HIGH
+    while ((*_pclkPort & _pclkMask) != 0); // wait for LOW
+    noInterrupts();
+
+    for (int j = 0; j < bytesPerRow; j++) {
+      // rising edges clock each data byte
+      while ((*_pclkPort & _pclkMask) == 0); // wait for HIGH
+
+      //uint32_t in = ((_frame_buffer_pointer)? GPIO1_DR : GPIO6_DR) >> 18; // read all bits in parallel
+      uint8_t in =  (GPIO7_PSR >> 4); // read all bits in parallel
+	  //uint32_t in = mmBus; 
+	  in &= 0x0F;
+	  
+	  if((j + 1) % 2) {
+		  in = (in0 << 4) | (in);
+		  if (!(j & 1) || !_grayscale) {
+			*b++ = in;
+		  }
+	  } else {
+		  in0 = in;
+	  }
+	  
+      while (((*_pclkPort & _pclkMask) != 0) && ((*_hrefPort & _hrefMask) != 0)) ; // wait for LOW bail if _href is lost
+    }
+
+    while ((*_hrefPort & _hrefMask) != 0) ;  // wait for LOW
+    interrupts();
+  }
+
+   set_mode(HIMAX_MODE_STREAMING, 0);
+
+}
+
 
 void HM01B0::flexio_configure()
 {
@@ -1641,7 +1731,7 @@ void HM01B0::processDMAInterrupt() {
   // lets try dumping a little data on 1st 2nd and last buffer.
 #ifdef DEBUG_CAMERA_VERBOSE
   if ((_dma_index < 3) || (buffer_size  < DMABUFFER_SIZE)) {
-    Serial.printf("D(%d, %d, %lu) %u %u: ", _dma_index, buffer_size, _bytes_left_dma, pixformat, _grayscale);
+    Serial.printf("D(%d, %d, %lu) %u : ", _dma_index, buffer_size, _bytes_left_dma, pixformat);
     for (uint16_t i = 0; i < 8; i++) {
       uint16_t b = buffer[i] >> 4;
       Serial.printf(" %lx(%02x)", buffer[i], b);

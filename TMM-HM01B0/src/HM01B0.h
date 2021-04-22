@@ -55,6 +55,7 @@ typedef enum {
     FRAMESIZE_QQVGA,    // 160x120
     FRAMESIZE_QVGA,     // 320x240
 	FRAMESIZE_320X320,  // 320x320
+	FRAMESIZE_QVGA4BIT,
 } framesize_t;
 
 typedef enum {
@@ -77,6 +78,7 @@ typedef enum {
 	HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT,
 	HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT,
 	HM01B0_TEENSY_MICROMOD_DMA_8BIT,
+	HM01B0_TEENSY_MICROMOD_GPIO_4BIT,
 	HM01B0_TEENSY_41_GPIO_8BIT,
 	HM01B0_TEENSY_40_FLEXIO_1BIT,
 	HM01B0_TEENSY_41_FLEXIO_4BIT,
@@ -145,6 +147,7 @@ class HM01B0
 	
 	//normal Read mode
 	void readFrameGPIO(void* buffer);
+	void readFrame4BitGPIO(void* buffer);
 	bool readContinuous(bool(*callback)(void *frame_buffer), void *fb1, void *fb2);
 	void stopReadContinuous();
 
@@ -310,7 +313,7 @@ class HM01B0
 #endif // __HM01B0_H__
 
 /*  
-Teensy MicroMod pinouts
+Teensy MicroMod pinouts - 8bit
 HM01B0 pin      pin#    NXP     Usage
 ----------      ----    ---     -----
 FVLD/VSYNC      33      EMC_07  GPIO

@@ -37,27 +37,37 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
 };
 
 
-#define _hmConfig 2 // select mode string below
+#define _hmConfig 3 // select mode string below
 
 PROGMEM const char hmConfig[][48] = {
  "HM01B0_TEENSY_MICROMOD_GPIO_8BIT",
  "HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT",
- "HM01B0_TEENSY_MICROMOD_DMA_8BIT" };
+ "HM01B0_TEENSY_MICROMOD_DMA_8BIT",
+ "HM01B0_TEENSY_MICROMOD_GPIO_4BIT" };
 #if _hmConfig ==0
 HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_GPIO_8BIT);
 #elif _hmConfig ==1
 HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT);
 #elif _hmConfig ==2
 HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_DMA_8BIT);
+#elif _hmConfig ==3
+HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_GPIO_4BIT);
 #endif
 
 //#define USE_SPARKFUN 1
 //#define USE_SDCARD 1
 File file;
 
+#define MMOD_ML 1
+#if MMOD_ML==1
 #define TFT_DC  1   // "TX1" on left side of Sparkfun ML Carrier
 #define TFT_CS  4   // "CS" on left side of Sparkfun ML Carrier
-#define TFT_RST  0  // "RX1" on left side of Sparkfun ML Carrier
+#define TFT_RST 0  // "RX1" on left side of Sparkfun ML Carrier
+#else // PJRC_BREAKOUT
+#define TFT_DC  4
+#define TFT_CS  10
+#define TFT_RST 255  // none
+#endif
 
 #define TFT_ST7789 1
 //#define TFT_ILI9341 1
@@ -123,7 +133,12 @@ void setup()
 
 #if defined(USE_SDCARD)
   Serial.println("Using SDCARD - Initializing");
-  if (!SD.begin(10)) {
+  #if MMOD_ML==1
+    if (!SD.begin(10)) {
+  #else
+    if (!SD.begin(BUILTIN_SDCARD)) {
+  #endif
+    }
     Serial.println("initialization failed!");
     //while (1){
     //    LEDON; delay(100);
@@ -169,8 +184,11 @@ void setup()
   status = hm01b0.loadSettings(LOAD_DEFAULT_REGS);
 #endif
 
-  status = hm01b0.set_framesize(FRAMESIZE_QVGA);
-
+  if(_hmConfig == 3){
+    status = hm01b0.set_framesize(FRAMESIZE_QVGA4BIT);
+  } else {
+    status = hm01b0.set_framesize(FRAMESIZE_QVGA);
+  }
   if (status != 0) {
     Serial.println("Settings failed to load");
     while (1) {}
@@ -230,7 +248,7 @@ bool hm01b0_dma_callback_video(void *pfb) {
   tft.setOrigin(-2, -2);
   tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)pfb, mono_palette);
   tft.setOrigin(0, 0);
-  tft.updateScreenAsync();
+  //tft.updateScreenAsync();
   last_dma_frame_buffer = (uint8_t*)pfb;
   return true;
 }
@@ -280,7 +298,7 @@ void loop()
         ch = ' ';
         g_continuous_mode = false;
   #else
-        Serial.println("*** Only works in USB Dual or Tripple Serial Mode ***");
+        Serial.println("*** Only works in USB Dual or Triple Serial Mode ***");
   #endif
         break;
       }
@@ -355,7 +373,7 @@ void loop()
       }
       case 'F':
       {
-        if(hm01b0.mode() == HM01B0_TEENSY_MICROMOD_GPIO_8BIT) {
+        if(hm01b0.mode() == HM01B0_TEENSY_MICROMOD_GPIO_8BIT || hm01b0.mode() == HM01B0_TEENSY_MICROMOD_GPIO_4BIT) {
           if (g_continuous_mode) {
             g_continuous_mode = false;
             Serial.println("*** Continuous mode turned off");
