@@ -43,7 +43,8 @@ PROGMEM const char hmConfig[][48] = {
  "HM01B0_TEENSY_MICROMOD_GPIO_8BIT",
  "HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT",
  "HM01B0_TEENSY_MICROMOD_DMA_8BIT",
- "HM01B0_TEENSY_MICROMOD_GPIO_4BIT" };
+ "HM01B0_TEENSY_MICROMOD_GPIO_4BIT",
+ "HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT"};
 #if _hmConfig ==0
 HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_GPIO_8BIT);
 #elif _hmConfig ==1
@@ -52,6 +53,8 @@ HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT);
 HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_DMA_8BIT);
 #elif _hmConfig ==3
 HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_GPIO_4BIT);
+#elif _hmConfig ==4
+HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT);
 #endif
 
 //#define USE_SPARKFUN 1
@@ -184,7 +187,7 @@ void setup()
   status = hm01b0.loadSettings(LOAD_DEFAULT_REGS);
 #endif
 
-  if(_hmConfig == 3){
+  if(_hmConfig == 3 || _hmConfig == 4){
     status = hm01b0.set_framesize(FRAMESIZE_QVGA4BIT);
   } else {
     status = hm01b0.set_framesize(FRAMESIZE_QVGA);

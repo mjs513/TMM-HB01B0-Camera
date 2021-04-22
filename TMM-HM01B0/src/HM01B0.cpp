@@ -50,7 +50,7 @@ SOFTWARE.
 
 //#define DEBUG_CAMERA
 //#define DEBUG_CAMERA_VERBOSE
-//#define DEBUG_FLEXIO
+#define DEBUG_FLEXIO
 
 const uint16_t default_regs[][2] = {
     {BLC_TGT,              0x08},          //  BLC target :8  at 8 bit mode
@@ -1006,7 +1006,7 @@ int HM01B0::init()
 		G7 = 9;
 	}
 	
-	if(_hw_config == HM01B0_TEENSY_MICROMOD_GPIO_4BIT) {
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_GPIO_4BIT || _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
 		VSYNC_PIN = 33;
 		PCLK_PIN = 8;
 		HSYNC_PIN = 32;
@@ -1055,7 +1055,7 @@ int HM01B0::init()
 	delay(5);
 	
 	
-	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT ) {
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT || _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
 		flexio_configure();
 	}
 	
@@ -1077,7 +1077,7 @@ void HM01B0::readFrame(void* buffer){
 	if(_hw_config == HM01B0_TEENSY_MICROMOD_GPIO_4BIT) {
 		readFrame4BitGPIO(buffer);
 	} else 
-	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT) {
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT || _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
 		readFrameFlexIO(buffer);
 	} else
 	if(_hw_config == HM01B0_TEENSY_MICROMOD_DMA_8BIT) {
@@ -1283,6 +1283,36 @@ void HM01B0::flexio_configure()
 		FLEXIO2_SHIFTCTL3 = FLEXIO_SHIFTCTL_TIMSEL(2) | FLEXIO_SHIFTCTL_SMOD(1)
 			| FLEXIO_SHIFTCTL_PINSEL(4); // 4 = D0
 	}
+
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_00 = 4; // B1_00 = FlexIO2:16 = PCLK
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_04 = 4; // B0_04 = FlexIO2:4  = D0
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_05 = 4; // B0_05 = FlexIO2:5  = D1
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_06 = 4; // B0_06 = FlexIO2:6  = D2
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_07 = 4; // B0_07 = FlexIO2:7  = D3
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_12 = 4; // B0_12 = FlexIO2:12 = HSYNC
+
+		// SHIFTCFG, page 2927
+		//  PWIDTH: number of bits to be shifted on each Shift clock
+		//          0 = 1 bit, 1-3 = 4 bit, 4-7 = 8 bit, 8-15 = 16 bit, 16-31 = 32 bit
+		//  INSRC: Input Source, 0 = pin, 1 = Shifter N+1 Output
+		//  SSTOP: Stop bit, 0 = disabled, 1 = match, 2 = use zero, 3 = use one
+		//  SSTART: Start bit, 0 = disabled, 1 = disabled, 2 = use zero, 3 = use one
+		FLEXIO2_SHIFTCFG3 = FLEXIO_SHIFTCFG_PWIDTH(3);
+
+		// SHIFTCTL, page 2926
+		//  TIMSEL: which Timer is used for controlling the logic/shift register
+		//  TIMPOL: 0 = shift of positive edge, 1 = shift on negative edge
+		//  PINCFG: 0 = output disabled, 1 = open drain, 2 = bidir, 3 = output
+		//  PINSEL: which pin is used by the Shifter input or output
+		//  PINPOL: 0 = active high, 1 = active low
+		//  SMOD: 0 = disable, 1 = receive, 2 = transmit, 4 = match store,
+		//        5 = match continuous, 6 = state machine, 7 = logic
+		FLEXIO2_SHIFTCTL3 = FLEXIO_SHIFTCTL_TIMSEL(2) | FLEXIO_SHIFTCTL_SMOD(1)
+			| FLEXIO_SHIFTCTL_PINSEL(4); // 4 = D0
+	}
+
+
 
 	// Timer model, pages 2891-2893
 	// TIMCMP, page 2937
