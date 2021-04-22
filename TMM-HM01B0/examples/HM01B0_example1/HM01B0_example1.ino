@@ -37,7 +37,7 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
 };
 
 
-#define _hmConfig 3 // select mode string below
+#define _hmConfig 0 // select mode string below
 
 PROGMEM const char hmConfig[][48] = {
  "HM01B0_TEENSY_MICROMOD_GPIO_8BIT",
@@ -61,7 +61,7 @@ HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT);
 //#define USE_SDCARD 1
 File file;
 
-#define MMOD_ML 1
+#define MMOD_ML 0
 #if MMOD_ML==1
 #define TFT_DC  1   // "TX1" on left side of Sparkfun ML Carrier
 #define TFT_CS  4   // "CS" on left side of Sparkfun ML Carrier
@@ -72,8 +72,8 @@ File file;
 #define TFT_RST 255  // none
 #endif
 
-#define TFT_ST7789 1
-//#define TFT_ILI9341 1
+//#define TFT_ST7789 1
+#define TFT_ILI9341 1
 
 #ifdef TFT_ST7789
 //ST7735 Adafruit 320x240 display
@@ -117,7 +117,7 @@ void setup()
 #else
   tft.init(240, 320);           // Init ST7789 320x240
 #endif
-  tft.setRotation(1);
+  tft.setRotation(3);
   tft.fillScreen(TFT_RED);
   delay(500);
   tft.fillScreen(TFT_GREEN);
@@ -285,16 +285,15 @@ void loop()
       case 'p':
       {
   #if defined(USB_DUAL_SERIAL) || defined(USB_TRIPLE_SERIAL)
-        calAE();
+        uint16_t pixel;
         memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-        hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
         hm01b0.readFrame(frameBuffer);
         uint32_t idx = 0;
         for (int i = 0; i < FRAME_HEIGHT * FRAME_WIDTH; i++) {
           idx = i * 2;
-          frameBuffer[i] = color565(frameBuffer[i], frameBuffer[i], frameBuffer[i]);
-          sendImageBuf[idx + 1] = (frameBuffer[i] >> 0) & 0xFF;
-          sendImageBuf[idx] = (frameBuffer[i] >> 8) & 0xFF;
+          pixel = color565(frameBuffer[i], frameBuffer[i], frameBuffer[i]);
+          sendImageBuf[idx + 1] = (pixel >> 0) & 0xFF;
+          sendImageBuf[idx] = (pixel >> 8) & 0xFF;
         }
         send_raw();
         Serial.println("Image Sent!");
@@ -600,4 +599,17 @@ void showCommandList() {
   Serial.println("Send the 'V' character DMA to TFT async continueous  ...");
 
   Serial.println();
+}
+
+
+void calAE() {
+  // Calibrate Autoexposure
+  Serial.println("Calibrating Auto Exposure...");
+  memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
+  if (hm01b0.cal_ae(10, frameBuffer, FRAME_WIDTH * FRAME_HEIGHT, &aecfg) != HM01B0_ERR_OK) {
+    Serial.println("\tnot converged");
+  } else {
+    Serial.println("\tconverged!");
+    hm01b0.cmdUpdate();
+  }
 }
