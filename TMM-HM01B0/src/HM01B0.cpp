@@ -1007,11 +1007,11 @@ int HM01B0::init()
 	}
 	
 	if(_hw_config == HM01B0_TEENSY_MICROMOD_GPIO_4BIT || _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
-		VSYNC_PIN = 33;
-		PCLK_PIN = 8;
-		HSYNC_PIN = 32;
-		MCLK_PIN = 7;
-		EN_PIN = 2;
+		VSYNC_PIN = 32;		//33
+		PCLK_PIN = 44;		//8
+		HSYNC_PIN = 45;		//32
+		MCLK_PIN = 33;		//7
+		EN_PIN = 28;		//2
 		G0 = 40; G1 = 41;  G2 = 42;	G3 = 43;
 	}
 		
@@ -1275,16 +1275,34 @@ void HM01B0::flexio_configure()
 		// Timer model, pages 2891-2893
 		// TIMCMP, page 2937
 		FLEXIO2_TIMCMP2 = 7;
+		
+		// TIMCTL, page 2933
+		//  TRGSEL: Trigger Select ....
+		//          4*N - Pin 2*N input
+		//          4*N+1 - Shifter N status flag
+		//          4*N+2 - Pin 2*N+1 input
+		//          4*N+3 - Timer N trigger output
+		//  TRGPOL: 0 = active high, 1 = active low
+		//  TRGSRC: 0 = external, 1 = internal
+		//  PINCFG: timer pin, 0 = disable, 1 = open drain, 2 = bidir, 3 = output
+		//  PINSEL: which pin is used by the Timer input or output
+		//  PINPOL: 0 = active high, 1 = active low
+		//  TIMOD: mode, 0 = disable, 1 = 8 bit baud rate, 2 = 8 bit PWM, 3 = 16 bit
+		FLEXIO2_TIMCTL2 = FLEXIO_TIMCTL_TIMOD(3)
+			| FLEXIO_TIMCTL_PINSEL(16) // "Pin" is 16 = PCLK
+			| FLEXIO_TIMCTL_TRGSEL(4 * (12/2)) // "Trigger" is 12 = HSYNC
+			| FLEXIO_TIMCTL_TRGSRC;
 	}
 
 	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
-		IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_00 = 4; // B1_00 = FlexIO2:16 = PCLK
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_08 = 4; // B0_08 = FlexIO2:8 = PCLK (44)
 		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_04 = 4; // B0_04 = FlexIO2:4  = D0
 		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_05 = 4; // B0_05 = FlexIO2:5  = D1
 		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_06 = 4; // B0_06 = FlexIO2:6  = D2
 		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_07 = 4; // B0_07 = FlexIO2:7  = D3
-		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_12 = 4; // B0_12 = FlexIO2:12 = HSYNC
-
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_09 = 4; // B0_09 = FlexIO2:9 = HSYNC (45)
+		
+		
 		// SHIFTCFG, page 2927
 		//  PWIDTH: number of bits to be shifted on each Shift clock
 		//          0 = 1 bit, 1-3 = 4 bit, 4-7 = 8 bit, 8-15 = 16 bit, 16-31 = 32 bit
@@ -1296,6 +1314,23 @@ void HM01B0::flexio_configure()
 		// Timer model, pages 2891-2893
 		// TIMCMP, page 2937
 		FLEXIO2_TIMCMP2 = 15;
+		
+		// TIMCTL, page 2933
+		//  TRGSEL: Trigger Select ....
+		//          4*N - Pin 2*N input
+		//          4*N+1 - Shifter N status flag
+		//          4*N+2 - Pin 2*N+1 input
+		//          4*N+3 - Timer N trigger output
+		//  TRGPOL: 0 = active high, 1 = active low
+		//  TRGSRC: 0 = external, 1 = internal
+		//  PINCFG: timer pin, 0 = disable, 1 = open drain, 2 = bidir, 3 = output
+		//  PINSEL: which pin is used by the Timer input or output
+		//  PINPOL: 0 = active high, 1 = active low
+		//  TIMOD: mode, 0 = disable, 1 = 8 bit baud rate, 2 = 8 bit PWM, 3 = 16 bit
+		FLEXIO2_TIMCTL2 = FLEXIO_TIMCTL_TIMOD(3)
+			| FLEXIO_TIMCTL_PINSEL(8) // "Pin" is 16 = PCLK
+			| FLEXIO_TIMCTL_TRGSEL(4 * (9/2)) // "Trigger" is 12 = HSYNC
+			| FLEXIO_TIMCTL_TRGSRC;
 
 	}
 
@@ -1352,23 +1387,6 @@ void HM01B0::flexio_configure()
 	//  TSTART: Start bit, 0 = disabled, 1 = enabled
 	FLEXIO2_TIMCFG2 = FLEXIO_TIMCFG_TIMOUT(1) | FLEXIO_TIMCFG_TIMDEC(2)
 		| FLEXIO_TIMCFG_TIMENA(6) | FLEXIO_TIMCFG_TIMDIS(6);
-
-	// TIMCTL, page 2933
-	//  TRGSEL: Trigger Select ....
-	//          4*N - Pin 2*N input
-	//          4*N+1 - Shifter N status flag
-	//          4*N+2 - Pin 2*N+1 input
-	//          4*N+3 - Timer N trigger output
-	//  TRGPOL: 0 = active high, 1 = active low
-	//  TRGSRC: 0 = external, 1 = internal
-	//  PINCFG: timer pin, 0 = disable, 1 = open drain, 2 = bidir, 3 = output
-	//  PINSEL: which pin is used by the Timer input or output
-	//  PINPOL: 0 = active high, 1 = active low
-	//  TIMOD: mode, 0 = disable, 1 = 8 bit baud rate, 2 = 8 bit PWM, 3 = 16 bit
-	FLEXIO2_TIMCTL2 = FLEXIO_TIMCTL_TIMOD(3)
-		| FLEXIO_TIMCTL_PINSEL(16) // "Pin" is 16 = PCLK
-		| FLEXIO_TIMCTL_TRGSEL(4 * (12/2)) // "Trigger" is 12 = HSYNC
-		| FLEXIO_TIMCTL_TRGSRC;
 
 	// CTRL, page 2916
 	FLEXIO2_CTRL = FLEXIO_CTRL_FLEXEN; // enable after everything configured
@@ -1620,12 +1638,28 @@ bool HM01B0::startReadFrameDMA(bool(*callback)(void *frame_buffer), uint8_t *fb1
   IOMUXC_XBAR1_IN14_SELECT_INPUT = 1; // Make sure this signal goes to this pin...
 
 
+#if defined (ARDUINO_TEENSY_MICROMOD)
   // Need to switch the IO pins back to GPI1 from GPIO6
   _save_IOMUXC_GPR_GPR27 = IOMUXC_GPR_GPR27;  // save away the configuration before we change...
   IOMUXC_GPR_GPR27 &= ~(0x0ff0u);
 
   // lets also un map the _hrefPin to GPIO1
   IOMUXC_GPR_GPR27 &= ~_hrefMask; //
+#else
+  // Need to switch the IO pins back to GPI1 from GPIO6
+  _save_IOMUXC_GPR_GPR26 = IOMUXC_GPR_GPR26;  // save away the configuration before we change...
+  IOMUXC_GPR_GPR26 &= ~(0x0ff0u);
+
+  // lets also un map the _hrefPin to GPIO1
+  IOMUXC_GPR_GPR26 &= ~_hrefMask; //
+#endif
+
+  // Need to switch the IO pins back to GPI1 from GPIO6
+  //_save_IOMUXC_GPR_GPR27 = IOMUXC_GPR_GPR27;  // save away the configuration before we change...
+  //IOMUXC_GPR_GPR27 &= ~(0x0ff0u);
+
+  // lets also un map the _hrefPin to GPIO1
+  //IOMUXC_GPR_GPR27 &= ~_hrefMask; //
 
 
   //DebugDigitalToggle(OV7670_DEBUG_PIN_1);
