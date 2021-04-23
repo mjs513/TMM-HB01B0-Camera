@@ -1271,17 +1271,10 @@ void HM01B0::flexio_configure()
 		//  SSTOP: Stop bit, 0 = disabled, 1 = match, 2 = use zero, 3 = use one
 		//  SSTART: Start bit, 0 = disabled, 1 = disabled, 2 = use zero, 3 = use one
 		FLEXIO2_SHIFTCFG3 = FLEXIO_SHIFTCFG_PWIDTH(7);
-
-		// SHIFTCTL, page 2926
-		//  TIMSEL: which Timer is used for controlling the logic/shift register
-		//  TIMPOL: 0 = shift of positive edge, 1 = shift on negative edge
-		//  PINCFG: 0 = output disabled, 1 = open drain, 2 = bidir, 3 = output
-		//  PINSEL: which pin is used by the Shifter input or output
-		//  PINPOL: 0 = active high, 1 = active low
-		//  SMOD: 0 = disable, 1 = receive, 2 = transmit, 4 = match store,
-		//        5 = match continuous, 6 = state machine, 7 = logic
-		FLEXIO2_SHIFTCTL3 = FLEXIO_SHIFTCTL_TIMSEL(2) | FLEXIO_SHIFTCTL_SMOD(1)
-			| FLEXIO_SHIFTCTL_PINSEL(4); // 4 = D0
+			
+		// Timer model, pages 2891-2893
+		// TIMCMP, page 2937
+		FLEXIO2_TIMCMP2 = 7;
 	}
 
 	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
@@ -1299,6 +1292,13 @@ void HM01B0::flexio_configure()
 		//  SSTOP: Stop bit, 0 = disabled, 1 = match, 2 = use zero, 3 = use one
 		//  SSTART: Start bit, 0 = disabled, 1 = disabled, 2 = use zero, 3 = use one
 		FLEXIO2_SHIFTCFG3 = FLEXIO_SHIFTCFG_PWIDTH(3);
+		
+		// Timer model, pages 2891-2893
+		// TIMCMP, page 2937
+		FLEXIO2_TIMCMP2 = 15;
+
+	}
+
 
 		// SHIFTCTL, page 2926
 		//  TIMSEL: which Timer is used for controlling the logic/shift register
@@ -1310,13 +1310,8 @@ void HM01B0::flexio_configure()
 		//        5 = match continuous, 6 = state machine, 7 = logic
 		FLEXIO2_SHIFTCTL3 = FLEXIO_SHIFTCTL_TIMSEL(2) | FLEXIO_SHIFTCTL_SMOD(1)
 			| FLEXIO_SHIFTCTL_PINSEL(4); // 4 = D0
-	}
 
 
-
-	// Timer model, pages 2891-2893
-	// TIMCMP, page 2937
-	FLEXIO2_TIMCMP2 = 7;
 
 	// TIMCFG, page 2935
 	//  TIMOUT: Output
