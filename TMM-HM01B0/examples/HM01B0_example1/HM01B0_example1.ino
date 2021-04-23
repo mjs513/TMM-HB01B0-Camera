@@ -37,25 +37,23 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
 };
 
 
-#define _hmConfig 0 // select mode string below
+#define _hmConfig 4 // select mode string below
+#define _hmCarrier 1 
 
+PROGMEM const char hmCarrier[][48] = {
+ "HM01B0_SPARKFUN_ML_CARRIER",
+ "HM01B0_PJRC_CARRIER_4BIT",
+ "HM01B0_PJRC_CARRIER_8BIT"};
 PROGMEM const char hmConfig[][48] = {
  "HM01B0_TEENSY_MICROMOD_GPIO_8BIT",
  "HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT",
  "HM01B0_TEENSY_MICROMOD_DMA_8BIT",
  "HM01B0_TEENSY_MICROMOD_GPIO_4BIT",
  "HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT"};
-#if _hmConfig ==0
-HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_GPIO_8BIT);
-#elif _hmConfig ==1
-HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT);
-#elif _hmConfig ==2
-HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_DMA_8BIT);
-#elif _hmConfig ==3
-HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_GPIO_4BIT);
-#elif _hmConfig ==4
-HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT);
-#endif
+ 
+
+HM01B0 hm01b0(HM01B0_PJRC_CARRIER_4BIT, HM01B0_TEENSY_MICROMOD_GPIO_4BIT);
+
 
 //#define USE_SPARKFUN 1
 //#define USE_SDCARD 1
@@ -67,13 +65,13 @@ File file;
 #define TFT_CS  4   // "CS" on left side of Sparkfun ML Carrier
 #define TFT_RST 0  // "RX1" on left side of Sparkfun ML Carrier
 #else // PJRC_BREAKOUT
-#define TFT_DC  4
+#define TFT_DC  9  //4 when on 8bit mode 9 otherwise
 #define TFT_CS  10
 #define TFT_RST 255  // none
 #endif
 
-#define TFT_ST7789 1
-//#define TFT_ILI9341 1
+//#define TFT_ST7789 1
+#define TFT_ILI9341 1
 
 #ifdef TFT_ST7789
 //ST7735 Adafruit 320x240 display
@@ -187,7 +185,7 @@ void setup()
   status = hm01b0.loadSettings(LOAD_DEFAULT_REGS);
 #endif
 
-  if(_hmConfig == 3 || _hmConfig == 4){
+  if(hm01b0.mode() == HM01B0_TEENSY_MICROMOD_GPIO_4BIT || hm01b0.mode() == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT){
     status = hm01b0.set_framesize(FRAMESIZE_QVGA4BIT);
   } else {
     status = hm01b0.set_framesize(FRAMESIZE_QVGA);
@@ -623,4 +621,3 @@ void calAE() {
     hm01b0.cmdUpdate();
   }
 }
-

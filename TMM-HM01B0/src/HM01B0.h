@@ -73,8 +73,7 @@ typedef enum {
 
 
 typedef enum {
-	HM01B0_SPARKFUN_ML_CARRIER = 0,
-	HM01B0_TEENSY_MICROMOD_GPIO_8BIT,
+	HM01B0_TEENSY_MICROMOD_GPIO_8BIT = 0,
 	HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT,
 	HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT,
 	HM01B0_TEENSY_MICROMOD_DMA_8BIT,
@@ -84,6 +83,12 @@ typedef enum {
 	HM01B0_TEENSY_41_FLEXIO_4BIT,
 	HM01B0_TEENSY_41_CSI_8BIT,
 } hw_config_t;
+
+typedef enum {
+	HM01B0_SPARKFUN_ML_CARRIER = 0,
+	HM01B0_PJRC_CARRIER_4BIT,
+	HM01B0_PJRC_CARRIER_8BIT,
+} hw_carrier_t;
 
 typedef struct
 {
@@ -115,7 +120,7 @@ typedef enum {
 class HM01B0
 {
   public:
-    HM01B0(hw_config_t set_hw_config);
+    HM01B0(hw_carrier_t set_hw_carrier, hw_config_t set_hw_config);
 	int init();
 	int reset();
 	void showRegisters(void);
@@ -179,6 +184,7 @@ class HM01B0
 	pixformat_t pixformat;
 	camera_reg_settings_t settings;
 	hw_config_t _hw_config;
+	hw_carrier_t _hw_carrier;
 	
   private:
 	uint8_t cameraReadRegister(uint16_t reg);

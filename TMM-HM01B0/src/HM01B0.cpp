@@ -444,9 +444,10 @@ const uint16_t sHM01B0Init_regs[][2] =
 };
 
 // Constructor
-HM01B0::HM01B0(hw_config_t set_hw_config)
+HM01B0::HM01B0(hw_carrier_t set_hw_carrier, hw_config_t set_hw_config)
 {
 	_hw_config = set_hw_config;
+	_hw_carrier = set_hw_carrier;
 	
 }
 
@@ -995,26 +996,35 @@ int HM01B0::init()
 {
 	Wire.begin();
 	
-	if(_hw_config == HM01B0_SPARKFUN_ML_CARRIER || _hw_config == HM01B0_TEENSY_MICROMOD_GPIO_8BIT || _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT ||  _hw_config == HM01B0_TEENSY_MICROMOD_DMA_8BIT) {
+	if(_hw_carrier == HM01B0_SPARKFUN_ML_CARRIER || _hw_carrier == HM01B0_PJRC_CARRIER_8BIT) {
 		VSYNC_PIN = 33;
 		PCLK_PIN = 8;
 		HSYNC_PIN = 32;
 		MCLK_PIN = 7;
 		EN_PIN = 2;
-		G0 = 40; G1 = 41;  G2 = 42;	G3 = 43;
-		G4 = 44; G5 = 45;  G6 = 6;
-		G7 = 9;
+		Serial.println("Sparkfun or 8bitPJRC Carrier");
+		
+		if(_hw_config == HM01B0_TEENSY_MICROMOD_GPIO_8BIT || _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT ||  _hw_config == HM01B0_TEENSY_MICROMOD_DMA_8BIT) {
+			G0 = 40; G1 = 41;  G2 = 42;	G3 = 43;
+			G4 = 44; G5 = 45;  G6 = 6;
+			G7 = 9;
+			Serial.println("8pins selected");
+
+		}
+		else if(_hw_config == HM01B0_TEENSY_MICROMOD_GPIO_4BIT || _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
+			G0 = 40; G1 = 41;  G2 = 42;	G3 = 43;
+		}
 	}
 	
-	if(_hw_config == HM01B0_TEENSY_MICROMOD_GPIO_4BIT || _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
+	if(_hw_carrier == HM01B0_PJRC_CARRIER_4BIT) {
+		Serial.println("PJRC_CARRIER_4BIT");
 		VSYNC_PIN = 32;		//33
 		PCLK_PIN = 44;		//8
 		HSYNC_PIN = 45;		//32
 		MCLK_PIN = 33;		//7
 		EN_PIN = 28;		//2
 		G0 = 40; G1 = 41;  G2 = 42;	G3 = 43;
-	}
-		
+	}		
 		
 	pinMode(VSYNC_PIN, INPUT_PULLDOWN); // VSYNC Pin
 	pinMode(PCLK_PIN, INPUT_PULLDOWN);  //PCLK
@@ -1024,12 +1034,14 @@ int HM01B0::init()
 	 * https://forum.pjrc.com/threads/66771-MicroMod-Beta-Testing?p=275567&viewfull=1#post275567
 	 * This interesting too: https://forum.pjrc.com/threads/57698-Parallel-IO-is-it-possible?p=216501&viewfull=1#post216501
 	*/
-	if(_hw_config == HM01B0_TEENSY_MICROMOD_GPIO_4BIT) {
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_GPIO_4BIT || _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
+		Serial.println("4pins initialized");
 		for (uint8_t pin : {G0, G1, G2, G3})
 		{
 			pinMode(pin, INPUT_PULLUP);
 		}
 	} else {
+		Serial.println("8pins initialized");
 		for (uint8_t pin : {G0, G1, G2, G3, G4, G5, G6, G7})
 		{
 			pinMode(pin, INPUT_PULLUP);
@@ -1252,30 +1264,53 @@ void HM01B0::flexio_configure()
 	Serial.printf(" FlexIO2 Config, param=%08X\n", FLEXIO2_PARAM);
 #endif
 	
-	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT) {
-		IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_00 = 4; // B1_00 = FlexIO2:16 = PCLK
-		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_04 = 4; // B0_04 = FlexIO2:4  = D0
-		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_05 = 4; // B0_05 = FlexIO2:5  = D1
-		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_06 = 4; // B0_06 = FlexIO2:6  = D2
-		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_07 = 4; // B0_07 = FlexIO2:7  = D3
-		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_08 = 4; // B0_08 = FlexIO2:8  = D4
-		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_09 = 4; // B0_09 = FlexIO2:9  = D5
-		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_10 = 4; // B0_10 = FlexIO2:10 = D6
-		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_11 = 4; // B0_11 = FlexIO2:11 = D7
-		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_12 = 4; // B0_12 = FlexIO2:12 = HSYNC
+	if(_hw_carrier == HM01B0_SPARKFUN_ML_CARRIER || _hw_carrier == HM01B0_PJRC_CARRIER_8BIT) {	
+		if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT) {
+			IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_00 = 4; // B1_00 = FlexIO2:16 = PCLK
+			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_04 = 4; // B0_04 = FlexIO2:4  = D0
+			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_05 = 4; // B0_05 = FlexIO2:5  = D1
+			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_06 = 4; // B0_06 = FlexIO2:6  = D2
+			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_07 = 4; // B0_07 = FlexIO2:7  = D3
+			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_08 = 4; // B0_08 = FlexIO2:8  = D4
+			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_09 = 4; // B0_09 = FlexIO2:9  = D5
+			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_10 = 4; // B0_10 = FlexIO2:10 = D6
+			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_11 = 4; // B0_11 = FlexIO2:11 = D7
+			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_12 = 4; // B0_12 = FlexIO2:12 = HSYNC
 
-		// SHIFTCFG, page 2927
-		//  PWIDTH: number of bits to be shifted on each Shift clock
-		//          0 = 1 bit, 1-3 = 4 bit, 4-7 = 8 bit, 8-15 = 16 bit, 16-31 = 32 bit
-		//  INSRC: Input Source, 0 = pin, 1 = Shifter N+1 Output
-		//  SSTOP: Stop bit, 0 = disabled, 1 = match, 2 = use zero, 3 = use one
-		//  SSTART: Start bit, 0 = disabled, 1 = disabled, 2 = use zero, 3 = use one
-		FLEXIO2_SHIFTCFG3 = FLEXIO_SHIFTCFG_PWIDTH(7);
-			
-		// Timer model, pages 2891-2893
-		// TIMCMP, page 2937
-		FLEXIO2_TIMCMP2 = 7;
+			// SHIFTCFG, page 2927
+			//  PWIDTH: number of bits to be shifted on each Shift clock
+			//          0 = 1 bit, 1-3 = 4 bit, 4-7 = 8 bit, 8-15 = 16 bit, 16-31 = 32 bit
+			//  INSRC: Input Source, 0 = pin, 1 = Shifter N+1 Output
+			//  SSTOP: Stop bit, 0 = disabled, 1 = match, 2 = use zero, 3 = use one
+			//  SSTART: Start bit, 0 = disabled, 1 = disabled, 2 = use zero, 3 = use one
+			FLEXIO2_SHIFTCFG3 = FLEXIO_SHIFTCFG_PWIDTH(7);
+				
+			// Timer model, pages 2891-2893
+			// TIMCMP, page 2937
+			FLEXIO2_TIMCMP2 = 7;
+		}
 		
+		if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
+			IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_00 = 4; // B1_00 = FlexIO2:16 = PCLK
+			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_04 = 4; // B0_04 = FlexIO2:4  = D0
+			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_05 = 4; // B0_05 = FlexIO2:5  = D1
+			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_06 = 4; // B0_06 = FlexIO2:6  = D2
+			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_07 = 4; // B0_07 = FlexIO2:7  = D3
+			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_12 = 4; // B0_12 = FlexIO2:12 = HSYNC
+
+			// SHIFTCFG, page 2927
+			//  PWIDTH: number of bits to be shifted on each Shift clock
+			//          0 = 1 bit, 1-3 = 4 bit, 4-7 = 8 bit, 8-15 = 16 bit, 16-31 = 32 bit
+			//  INSRC: Input Source, 0 = pin, 1 = Shifter N+1 Output
+			//  SSTOP: Stop bit, 0 = disabled, 1 = match, 2 = use zero, 3 = use one
+			//  SSTART: Start bit, 0 = disabled, 1 = disabled, 2 = use zero, 3 = use one
+			FLEXIO2_SHIFTCFG3 = FLEXIO_SHIFTCFG_PWIDTH(3);
+				
+			// Timer model, pages 2891-2893
+			// TIMCMP, page 2937
+			FLEXIO2_TIMCMP2 = 15;
+		}
+			
 		// TIMCTL, page 2933
 		//  TRGSEL: Trigger Select ....
 		//          4*N - Pin 2*N input
@@ -1294,7 +1329,8 @@ void HM01B0::flexio_configure()
 			| FLEXIO_TIMCTL_TRGSRC;
 	}
 
-	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
+	if( _hw_carrier == HM01B0_PJRC_CARRIER_4BIT && _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
+		Serial.println("Setting config for 4x4 configuration");
 		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_08 = 4; // B0_08 = FlexIO2:8 = PCLK (44)
 		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_04 = 4; // B0_04 = FlexIO2:4  = D0
 		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_05 = 4; // B0_05 = FlexIO2:5  = D1
@@ -1334,17 +1370,16 @@ void HM01B0::flexio_configure()
 
 	}
 
-
-		// SHIFTCTL, page 2926
-		//  TIMSEL: which Timer is used for controlling the logic/shift register
-		//  TIMPOL: 0 = shift of positive edge, 1 = shift on negative edge
-		//  PINCFG: 0 = output disabled, 1 = open drain, 2 = bidir, 3 = output
-		//  PINSEL: which pin is used by the Shifter input or output
-		//  PINPOL: 0 = active high, 1 = active low
-		//  SMOD: 0 = disable, 1 = receive, 2 = transmit, 4 = match store,
-		//        5 = match continuous, 6 = state machine, 7 = logic
-		FLEXIO2_SHIFTCTL3 = FLEXIO_SHIFTCTL_TIMSEL(2) | FLEXIO_SHIFTCTL_SMOD(1)
-			| FLEXIO_SHIFTCTL_PINSEL(4); // 4 = D0
+	// SHIFTCTL, page 2926
+	//  TIMSEL: which Timer is used for controlling the logic/shift register
+	//  TIMPOL: 0 = shift of positive edge, 1 = shift on negative edge
+	//  PINCFG: 0 = output disabled, 1 = open drain, 2 = bidir, 3 = output
+	//  PINSEL: which pin is used by the Shifter input or output
+	//  PINPOL: 0 = active high, 1 = active low
+	//  SMOD: 0 = disable, 1 = receive, 2 = transmit, 4 = match store,
+	//        5 = match continuous, 6 = state machine, 7 = logic
+	FLEXIO2_SHIFTCTL3 = FLEXIO_SHIFTCTL_TIMSEL(2) | FLEXIO_SHIFTCTL_SMOD(1)
+		| FLEXIO_SHIFTCTL_PINSEL(4); // 4 = D0
 
 
 
