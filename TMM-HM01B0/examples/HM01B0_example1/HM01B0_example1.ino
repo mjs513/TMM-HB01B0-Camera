@@ -72,8 +72,8 @@ File file;
 #define TFT_RST 255  // none
 #endif
 
-//#define TFT_ST7789 1
-#define TFT_ILI9341 1
+#define TFT_ST7789 1
+//#define TFT_ILI9341 1
 
 #ifdef TFT_ST7789
 //ST7735 Adafruit 320x240 display
@@ -279,6 +279,16 @@ void tft_frame_cb() {
 void loop()
 {
   char ch;
+  #if defined(USB_DUAL_SERIAL) || defined(USB_TRIPLE_SERIAL)
+  while (SerialUSB1.available()) {
+    ch = SerialUSB1.read();
+    if ( 0x30 == ch ) {
+      Serial.print(F("ACK CMD CAM start single shoot ... "));
+      send_image( &SerialUSB1 );
+      Serial.println(F("READY. END"));
+    }
+  }
+  #endif
   if (Serial.available()) {
     ch = Serial.read();
     switch (ch) {
@@ -409,7 +419,7 @@ void loop()
       case 0x30:
       {
           Serial.println(F("ACK CMD CAM start single shoot. END"));
-          send_image();
+          send_image( &Serial );
           Serial.println(F("READY. END"));
           break;
       }
@@ -463,7 +473,7 @@ uint16_t color565(uint8_t r, uint8_t g, uint8_t b) {
 
 
 DMAMEM unsigned char image[324*244];
-void send_image() {
+void send_image( Stream *imgSerial) {
   uint32_t imagesize;
   imagesize = (320 * 240 * 2);
   hm01b0.set_vflip(true);
@@ -483,17 +493,17 @@ void send_image() {
     }
   }
   
-  Serial.write(0xFF);
-  Serial.write(0xAA);
+  imgSerial->write(0xFF);
+  imgSerial->write(0xAA);
 
-  Serial.write((const uint8_t *)&bmp_header, sizeof(bmp_header));
+  imgSerial->write((const uint8_t *)&bmp_header, sizeof(bmp_header));
 
-  Serial.write(sendImageBuf, imagesize);
+  imgSerial->write(sendImageBuf, imagesize);
 
-  Serial.write(0xBB);
-  Serial.write(0xCC);
+  imgSerial->write(0xBB);
+  imgSerial->write(0xCC);
 
-  Serial.println(F("ACK CMD CAM Capture Done. END"));delay(50);
+  imgSerial->println(F("ACK CMD CAM Capture Done. END"));delay(50);
 
 }
 
@@ -613,3 +623,4 @@ void calAE() {
     hm01b0.cmdUpdate();
   }
 }
+
