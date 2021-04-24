@@ -37,8 +37,8 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
 };
 
 
-#define _hmConfig 4 // select mode string below
-#define _hmCarrier 1 
+#define _hmConfig 0 // select mode string below
+#define _hmCarrier 0 
 
 PROGMEM const char hmCarrier[][48] = {
  "HM01B0_SPARKFUN_ML_CARRIER",
@@ -52,7 +52,7 @@ PROGMEM const char hmConfig[][48] = {
  "HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT"};
  
 
-HM01B0 hm01b0(HM01B0_PJRC_CARRIER_4BIT, HM01B0_TEENSY_MICROMOD_GPIO_4BIT);
+HM01B0 hm01b0(HM01B0_PJRC_CARRIER_4BIT, HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT);
 
 
 //#define USE_SPARKFUN 1

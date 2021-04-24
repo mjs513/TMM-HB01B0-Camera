@@ -563,7 +563,7 @@ uint8_t HM01B0::set_framesize(framesize_t new_framesize)
             for (int i=0; QVGA_regs[i][0] && ret == 0; i++) {
                 ret |= cameraWriteRegister( QVGA_regs[i][0], QVGA_regs[i][1]);
             }
-			ret = cameraWriteRegister(BIT_CONTROL, 0x42);
+			ret = cameraWriteRegister(BIT_CONTROL, 0x42);   //0x3059 for 4bit: bit6 1(MSB) bit5: 0(ser_en)
             break;
 		case FRAMESIZE_INVALID:
             for (int i=0; default_regs[i][0] && ret == 0; i++) {
@@ -606,7 +606,9 @@ int HM01B0::set_framerate(int framerate)
         default:
             return -1;
     }
-    osc_div |= 0x28; // try also adding gated PCLK option I think
+	
+		osc_div |= 0x28; // try also adding gated PCLK option I think
+
 	Serial.printf("OSC_CLK_DIV: 0x%X\n", osc_div);
     return cameraWriteRegister(OSC_CLK_DIV,osc_div);
 }
@@ -1066,6 +1068,7 @@ int HM01B0::init()
 	analogWrite(MCLK_PIN, 128);
 	delay(5);
 	
+	reset();
 	
 	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT || _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
 		flexio_configure();
@@ -1073,7 +1076,6 @@ int HM01B0::init()
 	
 	set_pixformat(PIXFORMAT_GRAYSCALE);    //Sparkfun camera only supports grayscale
 	
-	//set_mode(HIMAX_MODE_STREAMING,0);
 		
     return 0;
 }
@@ -1104,7 +1106,7 @@ void HM01B0::readFrame(void* buffer){
 bool HM01B0::readContinuous(bool(*callback)(void *frame_buffer), void *fb1, void *fb2) {
 	set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
 
-	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT) {
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT || _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
 		return startReadFlexIO(callback, fb1, fb2);
 	} else if(_hw_config == HM01B0_TEENSY_MICROMOD_DMA_8BIT) {
 		return startReadFrameDMA(callback, (uint8_t*) fb1, (uint8_t*)fb2);
@@ -1353,7 +1355,7 @@ void HM01B0::flexio_configure()
 		
 		// TIMCTL, page 2933
 		//  TRGSEL: Trigger Select ....
-		//          4*N - Pin 2*N input
+		//          4*N - Pin 2*N input (this one is used)
 		//          4*N+1 - Shifter N status flag
 		//          4*N+2 - Pin 2*N+1 input
 		//          4*N+3 - Timer N trigger output
@@ -1364,8 +1366,8 @@ void HM01B0::flexio_configure()
 		//  PINPOL: 0 = active high, 1 = active low
 		//  TIMOD: mode, 0 = disable, 1 = 8 bit baud rate, 2 = 8 bit PWM, 3 = 16 bit
 		FLEXIO2_TIMCTL2 = FLEXIO_TIMCTL_TIMOD(3)
-			| FLEXIO_TIMCTL_PINSEL(8) // "Pin" is 16 = PCLK
-			| FLEXIO_TIMCTL_TRGSEL(4 * (9/2)) // "Trigger" is 12 = HSYNC
+			| FLEXIO_TIMCTL_PINSEL(8) // "Pin" is 8 = PCLK
+			| FLEXIO_TIMCTL_TRGSEL(2 * 9) // "Trigger" is 9 = HSYNC
 			| FLEXIO_TIMCTL_TRGSRC;
 
 	}
@@ -1488,6 +1490,7 @@ Serial.println("Reading FlexIO frame.......................................");
 			break;
 		}
 	}
+	
 	arm_dcache_delete(buffer, length);
 #endif
 }
