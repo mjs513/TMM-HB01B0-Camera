@@ -1054,6 +1054,7 @@ int HM01B0::init()
 		MCLK_PIN = 33;		//7
 		EN_PIN = 28;		//2
 		G0 = 40; G1 = 41;  G2 = 42;	G3 = 43;
+        G4 = 0xff;  // signals that we are in 4 bit mode. 
 	}
 		
 		
@@ -1065,7 +1066,7 @@ int HM01B0::init()
 	 * https://forum.pjrc.com/threads/66771-MicroMod-Beta-Testing?p=275567&viewfull=1#post275567
 	 * This interesting too: https://forum.pjrc.com/threads/57698-Parallel-IO-is-it-possible?p=216501&viewfull=1#post216501
 	*/
-	if(_hw_config == HM01B0_TEENSY_MICROMOD_GPIO_4BIT) {
+	if(G4 == 0xff) {
 		for (uint8_t pin : {G0, G1, G2, G3})
 		{
 			pinMode(pin, INPUT_PULLUP);
@@ -1512,14 +1513,13 @@ bool HM01B0::flexio_configure_manual_settings()
     }
     _fshifter_mask = 1 << _fshifter;
     _dma_source = _pflex->shiftersDMAChannel(_fshifter);
-    // Now lets try to claim all of the pieces
-    // Special Timer needed? first pass lets assume Timer 2:
-    uint8_t _ftimer = 2;
-    if (!_pflex->claimTimer(_ftimer)) {
-        Serial.printf("HM01B0 Flex IO: Could not claim Timer %u\n", _ftimer);
+    
+    // Now request one timer
+    uint8_t _ftimer = _pflex->requestTimers(); // request 1 timer. 
+    if (_ftimer == 0xff) {
+        Serial.printf("HM01B0 Flex IO: failed to request timer\n");
         return false;
     }
-
 
     _pflex->setIOPinToFlexMode(HSYNC_PIN);
     _pflex->setIOPinToFlexMode(PCLK_PIN);
