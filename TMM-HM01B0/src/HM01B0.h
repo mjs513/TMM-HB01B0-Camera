@@ -75,16 +75,8 @@ typedef enum {
 
 
 typedef enum {
-	HM01B0_TEENSY_MICROMOD_GPIO_8BIT = 0,
-	HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT,
+	HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT = 0,
 	HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT,
-	HM01B0_TEENSY_MICROMOD_DMA_8BIT,
-	HM01B0_TEENSY_MICROMOD_GPIO_4BIT,
-	HM01B0_TEENSY_41_GPIO_8BIT,
-	HM01B0_TEENSY_40_FLEXIO_1BIT,
-	HM01B0_TEENSY_41_FLEXIO_4BIT,
-	HM01B0_TEENSY_41_CSI_8BIT,
-	HM01B0_FLEXIO_MANUAL_SETTINGS,
 } hw_config_t;
 
 typedef enum {
@@ -196,8 +188,7 @@ class HM01B0
   private:
 	uint8_t cameraReadRegister(uint16_t reg);
 	uint8_t cameraWriteRegister(uint16_t reg, uint8_t data) ;
-	void flexio_configure();
-	bool flexio_configure_manual_settings();
+	bool flexio_configure();
 
 	uint8_t MCLK_PIN, PCLK_PIN, VSYNC_PIN, HSYNC_PIN,  EN_PIN;
 	uint8_t G0, G1, G2, G3, G4, G5, G6, G7;

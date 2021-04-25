@@ -37,28 +37,19 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
 };
 
 
-#define _hmConfig 4 // select mode string below
+#define _hmConfig 1 // select mode string below
 
 PROGMEM const char hmConfig[][48] = {
- "HM01B0_TEENSY_MICROMOD_GPIO_8BIT",
- "HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT",
- "HM01B0_TEENSY_MICROMOD_DMA_8BIT",
  "HM01B0_SPARKFUN_ML_CARRIER",
  "HM01B0_PJRC_CARRIER",
  "HM01B0_FLEXIO_CUSTOM_LIKE_8_BIT",
  "HM01B0_FLEXIO_CUSTOM_LIKE_4_BIT"
 };
 #if _hmConfig ==0
-HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_GPIO_8BIT);
-#elif _hmConfig ==1
-HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT);
-#elif _hmConfig ==2
-HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_DMA_8BIT);
-#elif _hmConfig ==3
-HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_GPIO_4BIT);
-#elif _hmConfig ==4
+HM01B0 hm01b0(HM01B0_SPARKFUN_ML_CARRIER);
+#elif _hmConfig == 1
 HM01B0 hm01b0(HM01B0_PJRC_CARRIER);
-#elif _hmConfig ==5
+#elif _hmConfig == 2
 // We are doing manual settings: 
 // this one should duplicate the 8 bit ML Carrier:
 //    HM01B0(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hsync_pin, en_pin,
@@ -66,7 +57,7 @@ HM01B0 hm01b0(HM01B0_PJRC_CARRIER);
 //    uint8_t g4=0xff, uint8_t g5=0xff,uint8_t g6=0xff,uint8_t g7=0xff, TwoWire &wire=Wire);
 HM01B0 hm01b0(7, 8, 33, 32, 2, 40, 41, 42, 43, 44, 45, 6, 9);
 
-#elif _hmConfig == 6
+#elif _hmConfig == 3
 // We are doing manual settings: 
 // this one should duplicate the 8 bit ML Carrier:
 //    HM01B0(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hsync_pin, en_pin,
@@ -176,7 +167,7 @@ void setup()
   Serial.println( hmConfig[_hmConfig] );
   Serial.println("------------------");
 
-  hm01b0.init();
+  //hm01b0.init();
   delay(500);
 
   tft.fillScreen(TFT_BLACK);
@@ -205,7 +196,7 @@ void setup()
   status = hm01b0.loadSettings(LOAD_DEFAULT_REGS);
 #endif
 
-  if(_hmConfig == 4 || _hmConfig == 6){
+  if(_hmConfig == 1 || _hmConfig == 3){
     status = hm01b0.set_framesize(FRAMESIZE_QVGA4BIT);
   } else {
     status = hm01b0.set_framesize(FRAMESIZE_QVGA);
@@ -259,18 +250,6 @@ bool hm01b0_flexio_callback(void *pfb)
 {
   //Serial.println("Flexio callback");
   g_new_flexio_data = pfb;
-  return true;
-}
-
-bool hm01b0_dma_callback_video(void *pfb) {
-  // just remember the last frame given to us. 
-  //Serial.printf("Callback: %x\n", (uint32_t)pfb);
-  if (tft.asyncUpdateActive()) return false; // don't use if we are already busy
-  tft.setOrigin(-2, -2);
-  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)pfb, mono_palette);
-  tft.setOrigin(0, 0);
-  //tft.updateScreenAsync();
-  last_dma_frame_buffer = (uint8_t*)pfb;
   return true;
 }
 
@@ -351,35 +330,6 @@ void loop()
   #endif
         break;
       }
-    case 'V':
-    {
-      if(hm01b0.mode() != HM01B0_TEENSY_MICROMOD_DMA_8BIT) {
-        Serial.println("Video not supported in this mode!");
-        break;
-      }
-     if (g_dma_mode) {
-        Serial.println("*** stopReadFrameDMA ***");
-        hm01b0.stopReadContinuous();
-        Serial.println("*** return from stopReadFrameDMA ***");
-        tft.endUpdateAsync();
-        tft.useFrameBuffer(false);
-        g_dma_mode = false;
-      } else {  
-        uint8_t status = hm01b0.readContinuous(&hm01b0_dma_callback_video, frameBuffer, frameBuffer2);
-        if ( !status ) {
-          Serial.print( "FALSE Return value from startReadFrameDMA " );
-        }
-        tft.setFrameCompleteCB(&tft_frame_cb, true);
-
-        tft.useFrameBuffer(true);
-        tft.fillScreen(TFT_BLACK);
-        tft.updateScreenAsync(true);
-        //        Serial.println("*** Return from updateScreenAsync ***");
-        g_dma_mode = true;
-      }
-      break;
-    }     
-          Serial.println("Send the 'V' character DMA to TFT async continueous  ...");
 
       case 'f':
       {
@@ -403,14 +353,12 @@ void loop()
       }
       case 'F':
       {
-        if(hm01b0.mode() == HM01B0_TEENSY_MICROMOD_GPIO_8BIT || hm01b0.mode() == HM01B0_TEENSY_MICROMOD_GPIO_4BIT) {
           if (g_continuous_mode) {
             g_continuous_mode = false;
             Serial.println("*** Continuous mode turned off");
           } else {
             g_continuous_mode = true;
             Serial.println("*** Continuous mode turned on");
-          }
           break;
         }
         if (!g_continuous_flex_mode) {
@@ -624,8 +572,6 @@ void showCommandList() {
   Serial.println("Send the 'b' character to save snapshot (BMP) to SD Card");
   Serial.println("Send the '1' character to blank the display");
   Serial.println("Send the 'z' character to send current screen BMP to SD");
-  Serial.println("Send the 'V' character DMA to TFT async continueous  ...");
-
   Serial.println();
 }
 
