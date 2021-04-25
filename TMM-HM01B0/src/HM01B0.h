@@ -38,6 +38,8 @@ SOFTWARE.
 
 #include <Arduino.h>
 #include <DMAChannel.h>
+#include <Wire.h>
+#include <FlexIO_t4.h>
 
 //Do not touch this define
 #define SensorMonochrome 1
@@ -82,12 +84,12 @@ typedef enum {
 	HM01B0_TEENSY_40_FLEXIO_1BIT,
 	HM01B0_TEENSY_41_FLEXIO_4BIT,
 	HM01B0_TEENSY_41_CSI_8BIT,
+	HM01B0_FLEXIO_MANUAL_SETTINGS,
 } hw_config_t;
 
 typedef enum {
 	HM01B0_SPARKFUN_ML_CARRIER = 0,
-	HM01B0_PJRC_CARRIER_4BIT,
-	HM01B0_PJRC_CARRIER_8BIT,
+	HM01B0_PJRC_CARRIER,
 } hw_carrier_t;
 
 typedef struct
@@ -120,7 +122,12 @@ typedef enum {
 class HM01B0
 {
   public:
-    HM01B0(hw_carrier_t set_hw_carrier, hw_config_t set_hw_config);
+    HM01B0(hw_carrier_t set_hw_carrier);
+    HM01B0(hw_config_t set_hw_config);
+    HM01B0(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hsync_pin, uint8_t en_pin,
+		uint8_t g0, uint8_t g1,uint8_t g2, uint8_t g3,
+		uint8_t g4=0xff, uint8_t g5=0xff,uint8_t g6=0xff,uint8_t g7=0xff, TwoWire &wire=Wire);
+
 	int init();
 	int reset();
 	void showRegisters(void);
@@ -190,10 +197,11 @@ class HM01B0
 	uint8_t cameraReadRegister(uint16_t reg);
 	uint8_t cameraWriteRegister(uint16_t reg, uint8_t data) ;
 	void flexio_configure();
-  
-	uint8_t VSYNC_PIN, PCLK_PIN , HSYNC_PIN, MCLK_PIN, EN_PIN;
-	uint8_t G0, G1, G2, G3, G4, G5, G6, G7;
+	bool flexio_configure_manual_settings();
 
+	uint8_t MCLK_PIN, PCLK_PIN, VSYNC_PIN, HSYNC_PIN,  EN_PIN;
+	uint8_t G0, G1, G2, G3, G4, G5, G6, G7;
+	TwoWire *_wire;
 	uint32_t _vsyncMask;
 	uint32_t _hrefMask;
 	uint32_t _pclkMask;
@@ -217,6 +225,16 @@ class HM01B0
 
 
 	DMAChannel dma_flexio;
+
+	// Added settings for configurable flexio
+	FlexIOHandler *_pflex;
+    IMXRT_FLEXIO_t *_pflexio;
+	uint8_t _fshifter;
+	uint8_t _fshifter_mask;
+    uint8_t _ftimer;
+    uint8_t _dma_source;
+
+
 
 	#if defined (ARDUINO_TEENSY_MICROMOD)
 	uint32_t _save_IOMUXC_GPR_GPR27;

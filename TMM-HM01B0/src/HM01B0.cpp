@@ -444,12 +444,52 @@ const uint16_t sHM01B0Init_regs[][2] =
 };
 
 // Constructor
-HM01B0::HM01B0(hw_carrier_t set_hw_carrier, hw_config_t set_hw_config)
+HM01B0::HM01B0(hw_config_t set_hw_config)
 {
 	_hw_config = set_hw_config;
-	_hw_carrier = set_hw_carrier;
+    _wire = &Wire;
 	
 }
+
+// Constructor
+HM01B0::HM01B0(hw_carrier_t set_hw_carrier)
+{
+  _hw_config = HM01B0_FLEXIO_MANUAL_SETTINGS;  
+  _wire = &Wire;
+  
+  if(set_hw_carrier == HM01B0_SPARKFUN_ML_CARRIER) {
+		VSYNC_PIN = 33;
+		PCLK_PIN = 8;
+		HSYNC_PIN = 32;
+		MCLK_PIN = 7;
+		EN_PIN = 2;
+		G0 = 40; G1 = 41;  G2 = 42;	G3 = 43;
+		G4 = 44; G5 = 45;  G6 = 6;
+		G7 = 9;
+  } else if(set_hw_carrier == HM01B0_PJRC_CARRIER) {
+		VSYNC_PIN = 32;		//33
+		PCLK_PIN = 44;		//8
+		HSYNC_PIN = 45;		//32
+		MCLK_PIN = 33;		//7
+		EN_PIN = 28;		//2
+		G0 = 40; G1 = 41;  G2 = 42;	G3 = 43;
+		G4 = 0xFF;
+	  
+  }
+	
+}
+
+
+
+HM01B0::HM01B0(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hsync_pin, uint8_t en_pin,
+    uint8_t g0, uint8_t g1,uint8_t g2, uint8_t g3, uint8_t g4, uint8_t g5, uint8_t g6,uint8_t g7, TwoWire &wire) : 
+        MCLK_PIN(mclk_pin), PCLK_PIN(pclk_pin), VSYNC_PIN(vsync_pin), HSYNC_PIN(hsync_pin), EN_PIN(en_pin), 
+        G0(g0), G1(g1), G2(g2), G3(g3), G4(g4), G5(g5), G6(g6), G7(g7) 
+{
+  _hw_config = HM01B0_FLEXIO_MANUAL_SETTINGS;  
+  _wire = &wire;
+}
+
 
 int HM01B0::reset()
 {
@@ -488,27 +528,27 @@ int HM01B0::reset()
 
 // Read a single uint8_t from address and return it as a uint8_t
 uint8_t HM01B0::cameraReadRegister(uint16_t reg) {
-  Wire.beginTransmission(0x24);
-  Wire.write(reg >> 8);
-  Wire.write(reg);
-  if (Wire.endTransmission(false) != 0) {
+  _wire->beginTransmission(0x24);
+  _wire->write(reg >> 8);
+  _wire->write(reg);
+  if (_wire->endTransmission(false) != 0) {
     Serial.println("error reading HM01B0, address");
     return 0;
   }
-  if (Wire.requestFrom(0x24, 1) < 1) {
+  if (_wire->requestFrom(0x24, 1) < 1) {
     Serial.println("error reading HM01B0, data");
     return 0;
   }
-  return Wire.read();
+  return _wire->read();
 }
 
 
 uint8_t HM01B0::cameraWriteRegister(uint16_t reg, uint8_t data) {
-  Wire.beginTransmission(0x24);
-  Wire.write(reg >> 8);
-  Wire.write(reg);
-  Wire.write(data);
-  if (Wire.endTransmission() != 0) {
+  _wire->beginTransmission(0x24);
+  _wire->write(reg >> 8);
+  _wire->write(reg);
+  _wire->write(data);
+  if (_wire->endTransmission() != 0) {
     Serial.println("error writing to HM01B0");
   }
   return 0;
@@ -563,7 +603,7 @@ uint8_t HM01B0::set_framesize(framesize_t new_framesize)
             for (int i=0; QVGA_regs[i][0] && ret == 0; i++) {
                 ret |= cameraWriteRegister( QVGA_regs[i][0], QVGA_regs[i][1]);
             }
-			ret = cameraWriteRegister(BIT_CONTROL, 0x42);   //0x3059 for 4bit: bit6 1(MSB) bit5: 0(ser_en)
+			ret = cameraWriteRegister(BIT_CONTROL, 0x42);
             break;
 		case FRAMESIZE_INVALID:
             for (int i=0; default_regs[i][0] && ret == 0; i++) {
@@ -606,9 +646,7 @@ int HM01B0::set_framerate(int framerate)
         default:
             return -1;
     }
-	
-		osc_div |= 0x28; // try also adding gated PCLK option I think
-
+    osc_div |= 0x28; // try also adding gated PCLK option I think
 	Serial.printf("OSC_CLK_DIV: 0x%X\n", osc_div);
     return cameraWriteRegister(OSC_CLK_DIV,osc_div);
 }
@@ -996,37 +1034,28 @@ uint8_t HM01B0::get_ae( ae_cfg_t *psAECfg)
 
 int HM01B0::init()
 {
-	Wire.begin();
-	
-	if(_hw_carrier == HM01B0_SPARKFUN_ML_CARRIER || _hw_carrier == HM01B0_PJRC_CARRIER_8BIT) {
+	_wire->begin();
+
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_GPIO_8BIT || _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT ||  _hw_config == HM01B0_TEENSY_MICROMOD_DMA_8BIT) {
 		VSYNC_PIN = 33;
 		PCLK_PIN = 8;
 		HSYNC_PIN = 32;
 		MCLK_PIN = 7;
 		EN_PIN = 2;
-		Serial.println("Sparkfun or 8bitPJRC Carrier");
-		
-		if(_hw_config == HM01B0_TEENSY_MICROMOD_GPIO_8BIT || _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT ||  _hw_config == HM01B0_TEENSY_MICROMOD_DMA_8BIT) {
-			G0 = 40; G1 = 41;  G2 = 42;	G3 = 43;
-			G4 = 44; G5 = 45;  G6 = 6;
-			G7 = 9;
-			Serial.println("8pins selected");
-
-		}
-		else if(_hw_config == HM01B0_TEENSY_MICROMOD_GPIO_4BIT || _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
-			G0 = 40; G1 = 41;  G2 = 42;	G3 = 43;
-		}
+		G0 = 40; G1 = 41;  G2 = 42;	G3 = 43;
+		G4 = 44; G5 = 45;  G6 = 6;
+		G7 = 9;
 	}
 	
-	if(_hw_carrier == HM01B0_PJRC_CARRIER_4BIT) {
-		Serial.println("PJRC_CARRIER_4BIT");
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_GPIO_4BIT || _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
 		VSYNC_PIN = 32;		//33
 		PCLK_PIN = 44;		//8
 		HSYNC_PIN = 45;		//32
 		MCLK_PIN = 33;		//7
 		EN_PIN = 28;		//2
 		G0 = 40; G1 = 41;  G2 = 42;	G3 = 43;
-	}		
+	}
+		
 		
 	pinMode(VSYNC_PIN, INPUT_PULLDOWN); // VSYNC Pin
 	pinMode(PCLK_PIN, INPUT_PULLDOWN);  //PCLK
@@ -1036,14 +1065,13 @@ int HM01B0::init()
 	 * https://forum.pjrc.com/threads/66771-MicroMod-Beta-Testing?p=275567&viewfull=1#post275567
 	 * This interesting too: https://forum.pjrc.com/threads/57698-Parallel-IO-is-it-possible?p=216501&viewfull=1#post216501
 	*/
-	if(_hw_config == HM01B0_TEENSY_MICROMOD_GPIO_4BIT || _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
-		Serial.println("4pins initialized");
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_GPIO_4BIT) {
 		for (uint8_t pin : {G0, G1, G2, G3})
 		{
 			pinMode(pin, INPUT_PULLUP);
 		}
 	} else {
-		Serial.println("8pins initialized");
+		Serial.println("8 Data pins configured");
 		for (uint8_t pin : {G0, G1, G2, G3, G4, G5, G6, G7})
 		{
 			pinMode(pin, INPUT_PULLUP);
@@ -1068,14 +1096,17 @@ int HM01B0::init()
 	analogWrite(MCLK_PIN, 128);
 	delay(5);
 	
-	reset();
 	
 	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT || _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
 		flexio_configure();
 	}
+    if(_hw_config == HM01B0_FLEXIO_MANUAL_SETTINGS) {
+        flexio_configure_manual_settings();
+    }
 	
 	set_pixformat(PIXFORMAT_GRAYSCALE);    //Sparkfun camera only supports grayscale
 	
+	//set_mode(HIMAX_MODE_STREAMING,0);
 		
     return 0;
 }
@@ -1181,7 +1212,7 @@ void HM01B0::readFrame4BitGPIO(void* buffer)
   uint8_t* b = (uint8_t*)buffer;
   bool _grayscale;
   int bytesPerRow;
-  uint8_t in0;
+  uint8_t in0 = 0;
   
   //Change for Monodchrome only Sparkfun HB01b0
   #if defined(SensorMonochrome) 
@@ -1252,7 +1283,14 @@ void HM01B0::flexio_configure()
 
 
 	CCM_CCGR3 |= CCM_CCGR3_FLEXIO2(CCM_CCGR_ON);
-	
+
+    // WIP setup that rest of Flex IO uses same as manual settings...
+    _pflexio = &IMXRT_FLEXIO2_S;
+    _fshifter = 3;
+    _fshifter_mask = 1 << 3;
+    _ftimer = 2;
+    _dma_source = DMAMUX_SOURCE_FLEXIO2_REQUEST3;
+
 
 #ifdef DEBUG_FLEXIO
 	Serial.println("FlexIO Configure");
@@ -1266,53 +1304,30 @@ void HM01B0::flexio_configure()
 	Serial.printf(" FlexIO2 Config, param=%08X\n", FLEXIO2_PARAM);
 #endif
 	
-	if(_hw_carrier == HM01B0_SPARKFUN_ML_CARRIER || _hw_carrier == HM01B0_PJRC_CARRIER_8BIT) {	
-		if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT) {
-			IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_00 = 4; // B1_00 = FlexIO2:16 = PCLK
-			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_04 = 4; // B0_04 = FlexIO2:4  = D0
-			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_05 = 4; // B0_05 = FlexIO2:5  = D1
-			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_06 = 4; // B0_06 = FlexIO2:6  = D2
-			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_07 = 4; // B0_07 = FlexIO2:7  = D3
-			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_08 = 4; // B0_08 = FlexIO2:8  = D4
-			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_09 = 4; // B0_09 = FlexIO2:9  = D5
-			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_10 = 4; // B0_10 = FlexIO2:10 = D6
-			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_11 = 4; // B0_11 = FlexIO2:11 = D7
-			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_12 = 4; // B0_12 = FlexIO2:12 = HSYNC
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT) {
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_00 = 4; // B1_00 = FlexIO2:16 = PCLK
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_04 = 4; // B0_04 = FlexIO2:4  = D0
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_05 = 4; // B0_05 = FlexIO2:5  = D1
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_06 = 4; // B0_06 = FlexIO2:6  = D2
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_07 = 4; // B0_07 = FlexIO2:7  = D3
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_08 = 4; // B0_08 = FlexIO2:8  = D4
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_09 = 4; // B0_09 = FlexIO2:9  = D5
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_10 = 4; // B0_10 = FlexIO2:10 = D6
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_11 = 4; // B0_11 = FlexIO2:11 = D7
+		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_12 = 4; // B0_12 = FlexIO2:12 = HSYNC
 
-			// SHIFTCFG, page 2927
-			//  PWIDTH: number of bits to be shifted on each Shift clock
-			//          0 = 1 bit, 1-3 = 4 bit, 4-7 = 8 bit, 8-15 = 16 bit, 16-31 = 32 bit
-			//  INSRC: Input Source, 0 = pin, 1 = Shifter N+1 Output
-			//  SSTOP: Stop bit, 0 = disabled, 1 = match, 2 = use zero, 3 = use one
-			//  SSTART: Start bit, 0 = disabled, 1 = disabled, 2 = use zero, 3 = use one
-			FLEXIO2_SHIFTCFG3 = FLEXIO_SHIFTCFG_PWIDTH(7);
-				
-			// Timer model, pages 2891-2893
-			// TIMCMP, page 2937
-			FLEXIO2_TIMCMP2 = 7;
-		}
-		
-		if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
-			IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_00 = 4; // B1_00 = FlexIO2:16 = PCLK
-			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_04 = 4; // B0_04 = FlexIO2:4  = D0
-			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_05 = 4; // B0_05 = FlexIO2:5  = D1
-			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_06 = 4; // B0_06 = FlexIO2:6  = D2
-			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_07 = 4; // B0_07 = FlexIO2:7  = D3
-			IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_12 = 4; // B0_12 = FlexIO2:12 = HSYNC
-
-			// SHIFTCFG, page 2927
-			//  PWIDTH: number of bits to be shifted on each Shift clock
-			//          0 = 1 bit, 1-3 = 4 bit, 4-7 = 8 bit, 8-15 = 16 bit, 16-31 = 32 bit
-			//  INSRC: Input Source, 0 = pin, 1 = Shifter N+1 Output
-			//  SSTOP: Stop bit, 0 = disabled, 1 = match, 2 = use zero, 3 = use one
-			//  SSTART: Start bit, 0 = disabled, 1 = disabled, 2 = use zero, 3 = use one
-			FLEXIO2_SHIFTCFG3 = FLEXIO_SHIFTCFG_PWIDTH(3);
-				
-			// Timer model, pages 2891-2893
-			// TIMCMP, page 2937
-			FLEXIO2_TIMCMP2 = 15;
-		}
+		// SHIFTCFG, page 2927
+		//  PWIDTH: number of bits to be shifted on each Shift clock
+		//          0 = 1 bit, 1-3 = 4 bit, 4-7 = 8 bit, 8-15 = 16 bit, 16-31 = 32 bit
+		//  INSRC: Input Source, 0 = pin, 1 = Shifter N+1 Output
+		//  SSTOP: Stop bit, 0 = disabled, 1 = match, 2 = use zero, 3 = use one
+		//  SSTART: Start bit, 0 = disabled, 1 = disabled, 2 = use zero, 3 = use one
+		FLEXIO2_SHIFTCFG3 = FLEXIO_SHIFTCFG_PWIDTH(7);
 			
+		// Timer model, pages 2891-2893
+		// TIMCMP, page 2937
+		FLEXIO2_TIMCMP2 = 7;
+		
 		// TIMCTL, page 2933
 		//  TRGSEL: Trigger Select ....
 		//          4*N - Pin 2*N input
@@ -1331,8 +1346,7 @@ void HM01B0::flexio_configure()
 			| FLEXIO_TIMCTL_TRGSRC;
 	}
 
-	if( _hw_carrier == HM01B0_PJRC_CARRIER_4BIT && _hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
-		Serial.println("Setting config for 4x4 configuration");
+	if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
 		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_08 = 4; // B0_08 = FlexIO2:8 = PCLK (44)
 		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_04 = 4; // B0_04 = FlexIO2:4  = D0
 		IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_05 = 4; // B0_05 = FlexIO2:5  = D1
@@ -1355,7 +1369,7 @@ void HM01B0::flexio_configure()
 		
 		// TIMCTL, page 2933
 		//  TRGSEL: Trigger Select ....
-		//          4*N - Pin 2*N input (this one is used)
+		//          4*N - Pin 2*N input
 		//          4*N+1 - Shifter N status flag
 		//          4*N+2 - Pin 2*N+1 input
 		//          4*N+3 - Timer N trigger output
@@ -1366,22 +1380,23 @@ void HM01B0::flexio_configure()
 		//  PINPOL: 0 = active high, 1 = active low
 		//  TIMOD: mode, 0 = disable, 1 = 8 bit baud rate, 2 = 8 bit PWM, 3 = 16 bit
 		FLEXIO2_TIMCTL2 = FLEXIO_TIMCTL_TIMOD(3)
-			| FLEXIO_TIMCTL_PINSEL(8) // "Pin" is 8 = PCLK
-			| FLEXIO_TIMCTL_TRGSEL(2 * 9) // "Trigger" is 9 = HSYNC
+			| FLEXIO_TIMCTL_PINSEL(8) // "Pin" is 16 = PCLK
+			| FLEXIO_TIMCTL_TRGSEL(2 * (9)) // "Trigger" is 12 = HSYNC
 			| FLEXIO_TIMCTL_TRGSRC;
 
 	}
 
-	// SHIFTCTL, page 2926
-	//  TIMSEL: which Timer is used for controlling the logic/shift register
-	//  TIMPOL: 0 = shift of positive edge, 1 = shift on negative edge
-	//  PINCFG: 0 = output disabled, 1 = open drain, 2 = bidir, 3 = output
-	//  PINSEL: which pin is used by the Shifter input or output
-	//  PINPOL: 0 = active high, 1 = active low
-	//  SMOD: 0 = disable, 1 = receive, 2 = transmit, 4 = match store,
-	//        5 = match continuous, 6 = state machine, 7 = logic
-	FLEXIO2_SHIFTCTL3 = FLEXIO_SHIFTCTL_TIMSEL(2) | FLEXIO_SHIFTCTL_SMOD(1)
-		| FLEXIO_SHIFTCTL_PINSEL(4); // 4 = D0
+
+		// SHIFTCTL, page 2926
+		//  TIMSEL: which Timer is used for controlling the logic/shift register
+		//  TIMPOL: 0 = shift of positive edge, 1 = shift on negative edge
+		//  PINCFG: 0 = output disabled, 1 = open drain, 2 = bidir, 3 = output
+		//  PINSEL: which pin is used by the Shifter input or output
+		//  PINPOL: 0 = active high, 1 = active low
+		//  SMOD: 0 = disable, 1 = receive, 2 = transmit, 4 = match store,
+		//        5 = match continuous, 6 = state machine, 7 = logic
+		FLEXIO2_SHIFTCTL3 = FLEXIO_SHIFTCTL_TIMSEL(2) | FLEXIO_SHIFTCTL_SMOD(1)
+			| FLEXIO_SHIFTCTL_PINSEL(4); // 4 = D0
 
 
 
@@ -1437,98 +1452,349 @@ void HM01B0::flexio_configure()
 #endif
 }
 
+bool HM01B0::flexio_configure_manual_settings()
+{
+    // Going to try this using my FlexIO library.
+
+    // BUGBUG - starting off not going to worry about maybe first pin I choos is on multipl Flex IO controllers (yet)
+    uint8_t tpclk_pin; 
+    _pflex = FlexIOHandler::mapIOPinToFlexIOHandler(PCLK_PIN, tpclk_pin);
+    if (!_pflex) {
+        Serial.printf("HM01B0 PCLK(%u) is not a valid Flex IO pin\n", PCLK_PIN);
+        return false;
+    }
+    _pflexio = &(_pflex->port());
+
+    // Quick and dirty:
+    uint8_t thsync_pin = _pflex->mapIOPinToFlexPin(HSYNC_PIN);
+    uint8_t tg0 = _pflex->mapIOPinToFlexPin(G0);
+    uint8_t tg1 = _pflex->mapIOPinToFlexPin(G1);
+    uint8_t tg2 = _pflex->mapIOPinToFlexPin(G2);
+    uint8_t tg3 = _pflex->mapIOPinToFlexPin(G3);
+
+    // make sure the minimum here is valid: 
+    if ((thsync_pin == 0xff) || (tg0 == 0xff) || (tg1 == 0xff) || (tg2 == 0xff) || (tg3 == 0xff)) {
+        Serial.printf("HM01B0 Some pins did not map to valid Flex IO pin\n");
+        Serial.printf("    HSYNC(%u %u) G0(%u %u) G1(%u %u) G2(%u %u) G3(%u %u)", 
+            HSYNC_PIN, thsync_pin, G0, tg0, G1, tg1, G2, tg2, G3, tg3 );
+        return false;
+    } 
+    // Verify that the G numbers are consecutive... Should use arrays!
+    if ((tg1 != (tg0+1)) || (tg2 != (tg0+2)) || (tg3 != (tg0+3))) {
+        Serial.printf("HM01B0 Flex IO pins G0-G3 are not consective\n");
+        Serial.printf("    G0(%u %u) G1(%u %u) G2(%u %u) G3(%u %u)", 
+            G0, tg0, G1, tg1, G2, tg2, G3, tg3 );
+        return false;
+    }
+    if (G4 != 0xff) {
+        uint8_t tg4 = _pflex->mapIOPinToFlexPin(G4);
+        uint8_t tg5 = _pflex->mapIOPinToFlexPin(G5);
+        uint8_t tg6 = _pflex->mapIOPinToFlexPin(G6);
+        uint8_t tg7 = _pflex->mapIOPinToFlexPin(G7);
+        if ((tg4 != (tg0+4)) || (tg5 != (tg0+5)) || (tg6 != (tg0+6)) || (tg7 != (tg0+7))) {
+            Serial.printf("HM01B0 Flex IO pins G4-G7 are not consective with G0-3\n");
+            Serial.printf("    G0(%u %u) G4(%u %u) G5(%u %u) G6(%u %u) G7(%u %u)", 
+                G0, tg0, G4, tg4, G5, tg5, G6, tg6, G7, tg7 );
+            return false;
+        }
+        _hw_config = HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT;
+        Serial.println("Custom - Flexio is 8 bit mode");
+    } else {
+        _hw_config = HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT;
+        Serial.println("Custom - Flexio is 4 bit mode");
+    }
+
+    // Needs Shifter 3 (maybe 7 would work as well?)
+    _fshifter = 3;
+    if (!_pflex->claimShifter(_fshifter)) {
+        Serial.printf("HM01B0 Flex IO: Could not claim Shifter %u\n", _fshifter);
+        return false;
+    }
+    _fshifter_mask = 1 << _fshifter;
+    _dma_source = _pflex->shiftersDMAChannel(_fshifter);
+    // Now lets try to claim all of the pieces
+    // Special Timer needed? first pass lets assume Timer 2:
+    uint8_t _ftimer = 2;
+    if (!_pflex->claimTimer(_ftimer)) {
+        Serial.printf("HM01B0 Flex IO: Could not claim Timer %u\n", _ftimer);
+        return false;
+    }
+
+
+    _pflex->setIOPinToFlexMode(HSYNC_PIN);
+    _pflex->setIOPinToFlexMode(PCLK_PIN);
+    _pflex->setIOPinToFlexMode(G0);
+    _pflex->setIOPinToFlexMode(G1);
+    _pflex->setIOPinToFlexMode(G2);
+    _pflex->setIOPinToFlexMode(G3);
+    if (G4 != 0xff) {
+        _pflex->setIOPinToFlexMode(G4);
+        _pflex->setIOPinToFlexMode(G5);
+        _pflex->setIOPinToFlexMode(G6);
+        _pflex->setIOPinToFlexMode(G7);
+    }
+
+
+
+    // We already configured the clock to allow access.
+    // Now sure yet aoub configuring the actual colock speed...
+
+/*
+    CCM_CSCMR2 |= CCM_CSCMR2_FLEXIO2_CLK_SEL(3); // 480 MHz from USB PLL
+
+    CCM_CS1CDR = (CCM_CS1CDR
+        & ~(CCM_CS1CDR_FLEXIO2_CLK_PRED(7) | CCM_CS1CDR_FLEXIO2_CLK_PODF(7)))
+        | CCM_CS1CDR_FLEXIO2_CLK_PRED(1) | CCM_CS1CDR_FLEXIO2_CLK_PODF(1);
+
+
+    CCM_CCGR3 |= CCM_CCGR3_FLEXIO2(CCM_CCGR_ON);
+*/    
+    // clksel(0-3PLL4, Pll3 PFD2 PLL5, *PLL3_sw)
+    // clk_pred(0, 1, 2, 7) - divide (n+1)
+    // clk_podf(0, *7) divide (n+1)
+    // So default is 480mhz/16
+    // Clock select, pred, podf:
+    _pflex->setClockSettings(3, 1, 1);
+
+
+#ifdef DEBUG_FLEXIO
+    Serial.println("FlexIO Configure");
+    Serial.printf(" CCM_CSCMR2 = %08X\n", CCM_CSCMR2);
+    uint32_t div1 = ((CCM_CS1CDR >> 9) & 7) + 1;
+    uint32_t div2 = ((CCM_CS1CDR >> 25) & 7) + 1;
+    Serial.printf(" div1 = %u, div2 = %u\n", div1, div2);
+    Serial.printf(" FlexIO2 Frequency = %.2f MHz\n", 480.0 / (float)div1 / (float)div2);
+    Serial.printf(" CCM_CCGR3 = %08X\n", CCM_CCGR3);
+    Serial.printf(" FLEXIO2_CTRL = %08X\n", FLEXIO2_CTRL);
+    Serial.printf(" FlexIO2 Config, param=%08X\n", FLEXIO2_PARAM);
+#endif
+    
+    if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT) {
+        // SHIFTCFG, page 2927
+        //  PWIDTH: number of bits to be shifted on each Shift clock
+        //          0 = 1 bit, 1-3 = 4 bit, 4-7 = 8 bit, 8-15 = 16 bit, 16-31 = 32 bit
+        //  INSRC: Input Source, 0 = pin, 1 = Shifter N+1 Output
+        //  SSTOP: Stop bit, 0 = disabled, 1 = match, 2 = use zero, 3 = use one
+        //  SSTART: Start bit, 0 = disabled, 1 = disabled, 2 = use zero, 3 = use one
+        _pflexio->SHIFTCFG[_fshifter] = FLEXIO_SHIFTCFG_PWIDTH(7);
+            
+        // Timer model, pages 2891-2893
+        // TIMCMP, page 2937
+        _pflexio->TIMCMP[_ftimer] = 7;
+        
+        // TIMCTL, page 2933
+        //  TRGSEL: Trigger Select ....
+        //          4*N - Pin 2*N input
+        //          4*N+1 - Shifter N status flag
+        //          4*N+2 - Pin 2*N+1 input
+        //          4*N+3 - Timer N trigger output
+        //  TRGPOL: 0 = active high, 1 = active low
+        //  TRGSRC: 0 = external, 1 = internal
+        //  PINCFG: timer pin, 0 = disable, 1 = open drain, 2 = bidir, 3 = output
+        //  PINSEL: which pin is used by the Timer input or output
+        //  PINPOL: 0 = active high, 1 = active low
+        //  TIMOD: mode, 0 = disable, 1 = 8 bit baud rate, 2 = 8 bit PWM, 3 = 16 bit
+        _pflexio->TIMCTL[_ftimer] = FLEXIO_TIMCTL_TIMOD(3)
+            | FLEXIO_TIMCTL_PINSEL(tpclk_pin) // "Pin" is 16 = PCLK
+            | FLEXIO_TIMCTL_TRGSEL(4 * (thsync_pin/2)) // "Trigger" is 12 = HSYNC
+            | FLEXIO_TIMCTL_TRGSRC;
+    }
+
+    if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
+        
+        // SHIFTCFG, page 2927
+        //  PWIDTH: number of bits to be shifted on each Shift clock
+        //          0 = 1 bit, 1-3 = 4 bit, 4-7 = 8 bit, 8-15 = 16 bit, 16-31 = 32 bit
+        //  INSRC: Input Source, 0 = pin, 1 = Shifter N+1 Output
+        //  SSTOP: Stop bit, 0 = disabled, 1 = match, 2 = use zero, 3 = use one
+        //  SSTART: Start bit, 0 = disabled, 1 = disabled, 2 = use zero, 3 = use one
+        _pflexio->SHIFTCFG[_fshifter] = FLEXIO_SHIFTCFG_PWIDTH(3);
+        
+        // Timer model, pages 2891-2893
+        // TIMCMP, page 2937
+         _pflexio->TIMCMP[_ftimer] = 15;
+        
+        // TIMCTL, page 2933
+        //  TRGSEL: Trigger Select ....
+        //          4*N - Pin 2*N input
+        //          4*N+1 - Shifter N status flag
+        //          4*N+2 - Pin 2*N+1 input
+        //          4*N+3 - Timer N trigger output
+        //  TRGPOL: 0 = active high, 1 = active low
+        //  TRGSRC: 0 = external, 1 = internal
+        //  PINCFG: timer pin, 0 = disable, 1 = open drain, 2 = bidir, 3 = output
+        //  PINSEL: which pin is used by the Timer input or output
+        //  PINPOL: 0 = active high, 1 = active low
+        //  TIMOD: mode, 0 = disable, 1 = 8 bit baud rate, 2 = 8 bit PWM, 3 = 16 bit
+        _pflexio->TIMCTL[_ftimer] = FLEXIO_TIMCTL_TIMOD(3)
+            | FLEXIO_TIMCTL_PINSEL(tpclk_pin) // "Pin" is 16 = PCLK
+            | FLEXIO_TIMCTL_TRGSEL(2 * (thsync_pin)) // "Trigger" is 12 = HSYNC
+            | FLEXIO_TIMCTL_TRGSRC;
+    }
+
+
+    // SHIFTCTL, page 2926
+    //  TIMSEL: which Timer is used for controlling the logic/shift register
+    //  TIMPOL: 0 = shift of positive edge, 1 = shift on negative edge
+    //  PINCFG: 0 = output disabled, 1 = open drain, 2 = bidir, 3 = output
+    //  PINSEL: which pin is used by the Shifter input or output
+    //  PINPOL: 0 = active high, 1 = active low
+    //  SMOD: 0 = disable, 1 = receive, 2 = transmit, 4 = match store,
+    //        5 = match continuous, 6 = state machine, 7 = logic
+    _pflexio->SHIFTCTL[_fshifter] = FLEXIO_SHIFTCTL_TIMSEL(_ftimer) | FLEXIO_SHIFTCTL_SMOD(1)
+        | FLEXIO_SHIFTCTL_PINSEL(tg0); // 4 = D0
+
+
+
+    // TIMCFG, page 2935
+    //  TIMOUT: Output
+    //          0 = output is logic one when enabled and is not affected by timer reset
+    //          1 = output is logic zero when enabled and is not affected by timer reset
+    //          2 = output is logic one when enabled and on timer reset
+    //          3 = output is logic zero when enabled and on timer reset
+    //  TIMDEC: Decrement
+    //          0 = on FlexIO clock, Shift clock equals Timer output
+    //          1 = on Trigger input (both edges), Shift clock equals Timer output
+    //          2 = on Pin input (both edges), Shift clock equals Pin input
+    //          3 = on Trigger input (both edges), Shift clock equals Trigger input
+    //  TIMRST: Reset
+    //          0 = never reset
+    //          2 = on Timer Pin equal to Timer Output
+    //          3 = on Timer Trigger equal to Timer Output
+    //          4 = on Timer Pin rising edge
+    //          6 = on Trigger rising edge
+    //          7 = on Trigger rising or falling edge
+    //  TIMDIS: Disable
+    //          0 = never disabled
+    //          1 = disabled on Timer N-1 disable
+    //          2 = disabled on Timer compare
+    //          3 = on Timer compare and Trigger Low
+    //          4 = on Pin rising or falling edge
+    //          5 = on Pin rising or falling edge provided Trigger is high
+    //          6 = on Trigger falling edge
+    //  TIMENA
+    //          0 = always enabled
+    //          1 = enabled on Timer N-1 enable
+    //          2 = enabled on Trigger high
+    //          3 = enabled on Trigger high and Pin high
+    //          4 = enabled on Pin rising edge
+    //          5 = enabled on Pin rising edge and Trigger high
+    //          6 = enabled on Trigger rising edge
+    //          7 = enabled on Trigger rising or falling edge
+    //  TSTOP Stop bit, 0 = disabled, 1 = on compare, 2 = on disable, 3 = on either
+    //  TSTART: Start bit, 0 = disabled, 1 = enabled
+    _pflexio->TIMCFG[_ftimer] = FLEXIO_TIMCFG_TIMOUT(1) | FLEXIO_TIMCFG_TIMDEC(2)
+        | FLEXIO_TIMCFG_TIMENA(6) | FLEXIO_TIMCFG_TIMDIS(6);
+
+    // CTRL, page 2916
+    _pflexio->CTRL = FLEXIO_CTRL_FLEXEN; // enable after everything configured
+    
+#ifdef DEBUG_FLEXIO
+    Serial.printf(" FLEXIO:%u Shifter:%u Timer:%u\n", _pflex->FlexIOIndex(), _fshifter, _ftimer);
+    Serial.printf("     SHIFTCFG = %08X\n",  _pflexio->SHIFTCFG[_fshifter]);
+    Serial.printf("     SHIFTCTL = %08X\n",  _pflexio->SHIFTCTL[_fshifter]);
+    Serial.printf("     TIMCMP = %08X\n", _pflexio->TIMCMP[_ftimer]);
+    Serial.printf("     TIMCFG = %08X\n", _pflexio->TIMCFG[_ftimer]);
+    Serial.printf("     TIMCTL = %08X\n", _pflexio->SHIFTCTL[_fshifter]);
+#endif
+return true;
+}
+
 
 void HM01B0::readFrameFlexIO(void* buffer)
 {
-	//flexio_configure(); // one-time hardware setup
+    //flexio_configure(); // one-time hardware setup
 Serial.println("Reading FlexIO frame.......................................");
-	// wait for VSYNC to be low
-	while ((*_vsyncPort & _vsyncMask) != 0);
-	FLEXIO2_SHIFTSTAT = 0x08; // clear any prior shift status
-	FLEXIO2_SHIFTERR = 0x08;
+    // wait for VSYNC to be low
+    while ((*_vsyncPort & _vsyncMask) != 0);
+    _pflexio->SHIFTSTAT = _fshifter_mask; // clear any prior shift status
+    _pflexio->SHIFTERR = _fshifter_mask;
 
 #ifndef FLEXIO_USE_DMA
-	// read FlexIO by polling
-	uint32_t *p = (uint32_t *)buffer;
-	uint32_t *p_end = (uint32_t *)buffer + _width*_height/4;
+    // read FlexIO by polling
+    uint32_t *p = (uint32_t *)buffer;
+    uint32_t *p_end = (uint32_t *)buffer + _width*_height/4;
 
-	while (p < p_end) {
-		while ((FLEXIO2_SHIFTSTAT & 0x08) == 0) {
-			// wait for FlexIO shifter data
-		}
-		*p++ = FLEXIO2_SHIFTBUF3; // should use DMA...
-	}
+    while (p < p_end) {
+        while ((_pflexio->SHIFTSTAT & _fshifter_mask) == 0) {
+            // wait for FlexIO shifter data
+        }
+        *p++ = _pflexio->SHIFTBUF[_fshifter]; // should use DMA...
+    }
 #else
-	// read FlexIO by DMA
-	dma_flexio.begin();
-	const uint32_t length = _width*_height;
-	dma_flexio.source(FLEXIO2_SHIFTBUF3);
-	dma_flexio.destinationBuffer((uint32_t *)buffer, length);
-	dma_flexio.transferSize(4);
-	dma_flexio.transferCount(length / 4);
-	dma_flexio.disableOnCompletion();
-	dma_flexio.clearComplete();
-	dma_flexio.triggerAtHardwareEvent(DMAMUX_SOURCE_FLEXIO2_REQUEST3);
-	dma_flexio.enable();
-	FLEXIO2_SHIFTSDEN = 0x08;
+    // read FlexIO by DMA
+    dma_flexio.begin();
+    const uint32_t length = _width*_height;
+    dma_flexio.source(_pflexio->SHIFTBUF[_fshifter]);
+    dma_flexio.destinationBuffer((uint32_t *)buffer, length);
+    dma_flexio.transferSize(4);
+    dma_flexio.transferCount(length / 4);
+    dma_flexio.disableOnCompletion();
+    dma_flexio.clearComplete();
+    dma_flexio.triggerAtHardwareEvent(_dma_source);
+    dma_flexio.enable();
+    _pflexio->SHIFTSDEN = _fshifter_mask;
 
-	elapsedMillis timeout = 0;
-	while (!dma_flexio.complete()) {
-		// wait - we should not need to actually do anything during the DMA transfer
-		if (dma_flexio.error()) {
-			Serial.println("DMA error");
-			break;
-		}
-		if (timeout > 500) {
-			Serial.println("Timeout waiting for DMA");
-			if (FLEXIO2_SHIFTSTAT & 0x08) Serial.println(" SHIFTSTAT bit was set");
-			Serial.printf(" DMA channel #%u\n", dma_flexio.channel);
-			Serial.printf(" DMAMUX = %08X\n", *(&DMAMUX_CHCFG0 + dma_flexio.channel));
-			Serial.printf(" FLEXIO2_SHIFTSDEN = %02X\n", FLEXIO2_SHIFTSDEN);
-			Serial.printf(" TCD CITER = %u\n", dma_flexio.TCD->CITER_ELINKNO);
-			Serial.printf(" TCD CSR = %08X\n", dma_flexio.TCD->CSR);
-			break;
-		}
-	}
-	
-	arm_dcache_delete(buffer, length);
+    elapsedMillis timeout = 0;
+    while (!dma_flexio.complete()) {
+        // wait - we should not need to actually do anything during the DMA transfer
+        if (dma_flexio.error()) {
+            Serial.println("DMA error");
+            break;
+        }
+        if (timeout > 500) {
+            Serial.println("Timeout waiting for DMA");
+            if (_pflexio->SHIFTSTAT & _fshifter_mask) Serial.println(" SHIFTSTAT bit was set");
+            Serial.printf(" DMA channel #%u\n", dma_flexio.channel);
+            Serial.printf(" DMAMUX = %08X\n", *(&DMAMUX_CHCFG0 + dma_flexio.channel));
+            Serial.printf(" FLEXIO2_SHIFTSDEN = %02X\n", FLEXIO2_SHIFTSDEN);
+            Serial.printf(" TCD CITER = %u\n", dma_flexio.TCD->CITER_ELINKNO);
+            Serial.printf(" TCD CSR = %08X\n", dma_flexio.TCD->CSR);
+            break;
+        }
+    }
+    arm_dcache_delete(buffer, length);
 #endif
 }
+
 
 
 bool HM01B0::startReadFlexIO(bool(*callback)(void *frame_buffer), void *fb1, void *fb2)
 {
 #ifdef FLEXIO_USE_DMA
-	if (fb1 == nullptr || fb2 == nullptr) return false;
-	_frame_buffer_1 = (uint8_t *)fb1;
-	_frame_buffer_2 = (uint8_t *)fb2;
-	_callback = callback;
-	active_dma_camera = this;
-	//Serial.printf("startReadFrameFlexIO called buffers %x %x\n", (uint32_t)fb1, (uint32_t)fb2);
+    if (fb1 == nullptr || fb2 == nullptr) return false;
+    _frame_buffer_1 = (uint8_t *)fb1;
+    _frame_buffer_2 = (uint8_t *)fb2;
+    _callback = callback;
+    active_dma_camera = this;
+    //Serial.printf("startReadFrameFlexIO called buffers %x %x\n", (uint32_t)fb1, (uint32_t)fb2);
 
-	flexio_configure(); // one-time hardware setup
-	dma_flexio.begin();
-	const uint32_t length = _width*_height;
-	dma_flexio.source(FLEXIO2_SHIFTBUF3);
-	dma_flexio.destinationBuffer((uint32_t *)fb1, length);
-	dma_flexio.transferSize(4);
-	dma_flexio.transferCount(length / 4);
-	dma_flexio.disableOnCompletion();
-	dma_flexio.clearComplete();
-	dma_flexio.triggerAtHardwareEvent(DMAMUX_SOURCE_FLEXIO2_REQUEST3);
-	dma_flexio.interruptAtCompletion();
-	dma_flexio.attachInterrupt(dmaInterruptFlexIO);
-	FLEXIO2_SHIFTSDEN = 0x08;
-	_dma_frame_count = 0;
+    //flexio_configure(); // one-time hardware setup
+    dma_flexio.begin();
+    const uint32_t length = _width*_height;
+    dma_flexio.source(_pflexio->SHIFTBUF[_fshifter]);
+    dma_flexio.destinationBuffer((uint32_t *)fb1, length);
+    dma_flexio.transferSize(4);
+    dma_flexio.transferCount(length / 4);
+    dma_flexio.disableOnCompletion();
+    dma_flexio.clearComplete();
+    dma_flexio.triggerAtHardwareEvent(_dma_source);
+    dma_flexio.interruptAtCompletion();
+    dma_flexio.attachInterrupt(dmaInterruptFlexIO);
+    FLEXIO2_SHIFTSDEN = _fshifter_mask;
+    _dma_frame_count = 0;
 
-	// wait for VSYNC to be low
-	while ((*_vsyncPort & _vsyncMask) != 0);
-	attachInterrupt(VSYNC_PIN, &frameStartInterruptFlexIO, RISING);
-	return true;
+    // wait for VSYNC to be low
+    while ((*_vsyncPort & _vsyncMask) != 0);
+    attachInterrupt(VSYNC_PIN, &frameStartInterruptFlexIO, RISING);
+    return true;
 #else
-	return false;
+    return false;
 #endif
 }
+
+
+
 
 void HM01B0::frameStartInterruptFlexIO()
 {
@@ -1537,8 +1803,8 @@ void HM01B0::frameStartInterruptFlexIO()
 
 void HM01B0::processFrameStartInterruptFlexIO()
 {
-	FLEXIO2_SHIFTSTAT = 0x08; // clear any prior shift status
-	FLEXIO2_SHIFTERR = 0x08;
+	FLEXIO2_SHIFTSTAT = _fshifter_mask; // clear any prior shift status
+	FLEXIO2_SHIFTERR = _fshifter_mask;
 
 	// TODO: could a prior status have a DMA request still be pending?
 	void *dest = (_dma_frame_count & 1) ? _frame_buffer_2 : _frame_buffer_1;

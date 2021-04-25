@@ -37,23 +37,43 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
 };
 
 
-#define _hmConfig 0 // select mode string below
-#define _hmCarrier 0 
+#define _hmConfig 4 // select mode string below
 
-PROGMEM const char hmCarrier[][48] = {
- "HM01B0_SPARKFUN_ML_CARRIER",
- "HM01B0_PJRC_CARRIER_4BIT",
- "HM01B0_PJRC_CARRIER_8BIT"};
 PROGMEM const char hmConfig[][48] = {
  "HM01B0_TEENSY_MICROMOD_GPIO_8BIT",
  "HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT",
  "HM01B0_TEENSY_MICROMOD_DMA_8BIT",
- "HM01B0_TEENSY_MICROMOD_GPIO_4BIT",
- "HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT"};
- 
+ "HM01B0_SPARKFUN_ML_CARRIER",
+ "HM01B0_PJRC_CARRIER",
+ "HM01B0_FLEXIO_CUSTOM_LIKE_8_BIT",
+ "HM01B0_FLEXIO_CUSTOM_LIKE_4_BIT"
+};
+#if _hmConfig ==0
+HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_GPIO_8BIT);
+#elif _hmConfig ==1
+HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT);
+#elif _hmConfig ==2
+HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_DMA_8BIT);
+#elif _hmConfig ==3
+HM01B0 hm01b0(HM01B0_TEENSY_MICROMOD_GPIO_4BIT);
+#elif _hmConfig ==4
+HM01B0 hm01b0(HM01B0_PJRC_CARRIER);
+#elif _hmConfig ==5
+// We are doing manual settings: 
+// this one should duplicate the 8 bit ML Carrier:
+//    HM01B0(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hsync_pin, en_pin,
+//    uint8_t g0, uint8_t g1,uint8_t g2, uint8_t g3,
+//    uint8_t g4=0xff, uint8_t g5=0xff,uint8_t g6=0xff,uint8_t g7=0xff, TwoWire &wire=Wire);
+HM01B0 hm01b0(7, 8, 33, 32, 2, 40, 41, 42, 43, 44, 45, 6, 9);
 
-HM01B0 hm01b0(HM01B0_PJRC_CARRIER_4BIT, HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT);
-
+#elif _hmConfig == 6
+// We are doing manual settings: 
+// this one should duplicate the 8 bit ML Carrier:
+//    HM01B0(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hsync_pin, en_pin,
+//    uint8_t g0, uint8_t g1,uint8_t g2, uint8_t g3,
+//    uint8_t g4=0xff, uint8_t g5=0xff,uint8_t g6=0xff,uint8_t g7=0xff, TwoWire &wire=Wire);
+HM01B0 hm01b0(7, 8, 33, 32, 2, 40, 41, 42, 43);
+#endif
 
 //#define USE_SPARKFUN 1
 //#define USE_SDCARD 1
@@ -65,7 +85,7 @@ File file;
 #define TFT_CS  4   // "CS" on left side of Sparkfun ML Carrier
 #define TFT_RST 0  // "RX1" on left side of Sparkfun ML Carrier
 #else // PJRC_BREAKOUT
-#define TFT_DC  9  //4 when on 8bit mode 9 otherwise
+#define TFT_DC  9
 #define TFT_CS  10
 #define TFT_RST 255  // none
 #endif
@@ -185,7 +205,7 @@ void setup()
   status = hm01b0.loadSettings(LOAD_DEFAULT_REGS);
 #endif
 
-  if(hm01b0.mode() == HM01B0_TEENSY_MICROMOD_GPIO_4BIT || hm01b0.mode() == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT){
+  if(_hmConfig == 4 || _hmConfig == 6){
     status = hm01b0.set_framesize(FRAMESIZE_QVGA4BIT);
   } else {
     status = hm01b0.set_framesize(FRAMESIZE_QVGA);
