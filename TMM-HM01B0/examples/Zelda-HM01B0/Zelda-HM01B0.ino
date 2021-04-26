@@ -330,8 +330,7 @@ void setup() {
 	//guitarHeroTimer.begin(guitarHeroMode, 1000000/120);
 	//midiMapTimer.begin(printVoices, 5000);
 
-  threads.addThread(camerathread);
-
+  int cam = threads.addThread(camerathread);
   delay(2000);
 }
 

@@ -115,7 +115,6 @@ class HM01B0
 {
   public:
     HM01B0(hw_carrier_t set_hw_carrier);
-    HM01B0(hw_config_t set_hw_config);
     HM01B0(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hsync_pin, uint8_t en_pin,
 		uint8_t g0, uint8_t g1,uint8_t g2, uint8_t g3,
 		uint8_t g4=0xff, uint8_t g5=0xff,uint8_t g6=0xff,uint8_t g7=0xff, TwoWire &wire=Wire);

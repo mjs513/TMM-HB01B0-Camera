@@ -443,13 +443,6 @@ const uint16_t sHM01B0Init_regs[][2] =
     {0x0000,            0x00},
 };
 
-// Constructor
-HM01B0::HM01B0(hw_config_t set_hw_config)
-{
-	_hw_config = set_hw_config;
-    _wire = &Wire;
-	
-}
 
 // Constructor
 HM01B0::HM01B0(hw_carrier_t set_hw_carrier)
@@ -489,6 +482,12 @@ HM01B0::HM01B0(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hs
         G0(g0), G1(g1), G2(g2), G3(g3), G4(g4), G5(g5), G6(g6), G7(g7) 
 {
   _wire = &wire;
+  
+  if(g4 == 0xff) {
+	    _hw_config = HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT;
+  } else {
+	    _hw_config = HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT;
+  }
   
   init();
 }
@@ -1098,7 +1097,7 @@ void HM01B0::readFrame(void* buffer){
 
 
 bool HM01B0::readContinuous(bool(*callback)(void *frame_buffer), void *fb1, void *fb2) {
-	set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
+	//set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
 
 	return startReadFlexIO(callback, fb1, fb2);
 

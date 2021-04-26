@@ -109,7 +109,6 @@ uint8_t frameBuffer[(324) * 244];
 uint8_t sendImageBuf[(324) * 244 * 2];
 uint8_t frameBuffer2[(324) * 244] DMAMEM;
 
-bool g_continuous_mode = false;
 bool g_continuous_flex_mode = false;
 void * volatile g_new_flexio_data = nullptr;
 uint32_t g_flexio_capture_count = 0;
@@ -230,47 +229,11 @@ void setup()
   showCommandList();
 }
 
-
-uint8_t *last_dma_frame_buffer = nullptr;
-uint8_t *image_buffer_display = sendImageBuf; // BUGBUG using from somewhere else for now...
-
-bool hm01b0_dma_callback(void *pfb) {
-  //Serial.printf("Callback: %x\n", (uint32_t)pfb);
-  if (tft.asyncUpdateActive()) return false; // don't use if we are already busy
-  tft.setOrigin(-2, -2);
-  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)pfb, mono_palette);
-  tft.setOrigin(0, 0);
-  tft.updateScreenAsync();
-
-  last_dma_frame_buffer = (uint8_t*)pfb;
-  return true;
-}
-
 bool hm01b0_flexio_callback(void *pfb)
 {
   //Serial.println("Flexio callback");
   g_new_flexio_data = pfb;
   return true;
-}
-
-void tft_frame_cb() {
-  tft.setOrigin(-2, -2);
-  if (tft.subFrameCount()) {
-    // so finished drawing the top half of the display
-    tft.setClipRect(0, 0, tft.width(), tft.height() / 2);
-    tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)image_buffer_display, mono_palette);
-    // Lets play with buffers here. 
-  } else {
-    tft.setClipRect(0, tft.height() / 2, tft.width(), tft.height() / 2);      
-    tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)image_buffer_display, mono_palette);
-    if (last_dma_frame_buffer) {
-        hm01b0.changeFrameBuffer(last_dma_frame_buffer, image_buffer_display);
-        image_buffer_display = last_dma_frame_buffer;
-        last_dma_frame_buffer = nullptr;
-    }
-  }
-  tft.setOrigin(0, 0);
-  tft.setClipRect();
 }
 
 void loop()
@@ -305,7 +268,6 @@ void loop()
         send_raw();
         Serial.println("Image Sent!");
         ch = ' ';
-        g_continuous_mode = false;
   #else
         Serial.println("*** Only works in USB Dual or Triple Serial Mode ***");
   #endif
@@ -333,10 +295,6 @@ void loop()
 
       case 'f':
       {
-        if (g_dma_mode) {
-          Serial.println("Must stop Video first!");
-          break;
-        }
         tft.useFrameBuffer(false);
         tft.fillScreen(TFT_BLACK);
         //calAE();
@@ -353,14 +311,6 @@ void loop()
       }
       case 'F':
       {
-          if (g_continuous_mode) {
-            g_continuous_mode = false;
-            Serial.println("*** Continuous mode turned off");
-          } else {
-            g_continuous_mode = true;
-            Serial.println("*** Continuous mode turned on");
-          break;
-        }
         if (!g_continuous_flex_mode) {
           if (hm01b0.readContinuous(&hm01b0_flexio_callback, frameBuffer, frameBuffer2)) {
             Serial.println("* continuous mode started");
@@ -420,15 +370,6 @@ void loop()
         Serial.printf("redraw rate = %.2f Hz\n", redraw_rate);
       }
     }
-  }
-
-  if (g_continuous_mode) {
-    memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-    hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-    hm01b0.readFrame(frameBuffer);
-    tft.setOrigin(-2, -2);
-    tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, frameBuffer, mono_palette);
-    tft.setOrigin(0, 0);
   }
 }
 
