@@ -225,7 +225,7 @@ void setup() {
   /* Brightness
    *  Can be 1, 2, or 3
    */
-  hm01b0.set_brightness(3);
+  //hm01b0.set_brightness(3);
   hm01b0.set_autoExposure(true, 1500);  //higher the setting the less saturaturation of whiteness
   hm01b0.cmdUpdate();  //only need after changing auto exposure settings
 
@@ -262,7 +262,7 @@ void loop() {
       Serial.println("Reading frame using FlexIO");
       memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
       hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-      hm01b0.readFrameFlexIO(frameBuffer);
+      hm01b0.readFrame(frameBuffer);
       Serial.println("Finished reading frame"); Serial.flush();
       tft.setOrigin(-2, -2);
       tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, frameBuffer, mono_palette);
@@ -283,7 +283,7 @@ void loop() {
       Serial.println("Reading frame using FlexIO");
       memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
       hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-      hm01b0.readFrameFlexIO(frameBuffer);
+      hm01b0.readFrame(frameBuffer);
       uint32_t image_idx = 0;
       uint32_t frame_idx = 0;
     
@@ -341,32 +341,34 @@ void loop() {
     for(int j = 0; j < newH; j++){
       uint16_t p = colorWriteArray[i*factorW][j*factorH];
       array_swap[i][j] = p;
-      tft.drawPixel(j, i, array_swap[i][j]);
+      tft.drawPixel(i, j, array_swap[i][j]);
     }
   }
 
   int buffIdx = 0;
   for(int i = 0; i < CNN_IMG_SIZE; i++){
     for(int j = 0; j < CNN_IMG_SIZE; j++){
-      resized_buffer[buffIdx] = (array_swap[i][j]>>8)&0x00F8;
-      resized_buffer[buffIdx++] = (array_swap[i][j]>>3)&0x00FC;
-      resized_buffer[buffIdx++] = (array_swap[i][j]>>3)&0x00F8;
-      buffIdx++;
+      uint8_t r, g, b;
+      color565toRGB(array_swap[i][j], r, g, b);
+      resized_buffer[buffIdx] = r;
+      resized_buffer[buffIdx+1] = g;
+      resized_buffer[buffIdx+2] = b;
+      buffIdx = buffIdx+3;
     }
   }
   tft.setOrigin(130,130);
-  int h = 32, w = 32, row, col, buffidx=0;
+  int h = CNN_IMG_SIZE, w = CNN_IMG_SIZE, row, col, buffidx=0;
   uint8_t rgb[3];
-  for (row=0; row<32; row++) { // For each scanline...
-    for (col=0; col<32; col++) { // For each pixel...
+  for (row=0; row<CNN_IMG_SIZE; row++) { // For each scanline...
+    for (col=0; col<CNN_IMG_SIZE; col++) { // For each pixel...
       //To read from Flash Memory, pgm_read_XXX is required.
       //Since image is stored as uint16_t, pgm_read_word is used as it uses 16bit address
       for(uint8_t i=0; i < 3; i++){
          rgb[i] = resized_buffer[buffidx+i];
          buffidx++;
       }
-      //convert to color
-      tft.drawPixel(col, row, CL(rgb[0], rgb[1], rgb[2]));
+      //convert to color uint16
+      tft.drawPixel(col, row, color565(rgb[0], rgb[1], rgb[2]));
       //buffidx++;
     } // end pixel
   }
@@ -445,7 +447,7 @@ void nn()
   
   
     int top_ind = get_top_prediction(output_data);
-
+    tft.setOrigin(0,0);
     tft.print("Prediction: "); tft.println(cifar10_label[top_ind]);
     tft.print("  Confidence (%):"); 
     //Serial.println((output_data[top_ind]/127.0)*100.0);
@@ -465,6 +467,13 @@ uint16_t color565(uint8_t r, uint8_t g, uint8_t b) {
   return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
 }
 
+  // color565toRGB    - converts 565 format 16 bit color to RGB
+  static void color565toRGB(uint16_t color, uint8_t &r, uint8_t &g,
+                            uint8_t &b) {
+    r = (color >> 8) & 0x00F8;
+    g = (color >> 3) & 0x00FC;
+    b = (color << 3) & 0x00F8;
+  }
 
 DMAMEM unsigned char image[324*244];
 void send_image() {
