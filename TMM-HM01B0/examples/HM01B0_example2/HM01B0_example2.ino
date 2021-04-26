@@ -136,7 +136,7 @@ uint32_t secCC;
 
 void setupPR() {
   Serial.println("\n" __FILE__ " " __DATE__ " " __TIME__);
-  //isrPrime_it.priority(255);
+  isrPrime_it.priority(255);
 }
 volatile uint32_t glpCnt = 0;
 volatile uint32_t showCntsA = 0;
