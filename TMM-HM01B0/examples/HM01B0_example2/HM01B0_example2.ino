@@ -37,7 +37,7 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
 };
 
 
-#define _hmConfig 1 // select mode string below
+#define _hmConfig 3 // select mode string below
 
 PROGMEM const char hmConfig[][48] = {
  "HM01B0_SPARKFUN_ML_CARRIER",
@@ -76,7 +76,7 @@ File file;
 #define TFT_CS  4   // "CS" on left side of Sparkfun ML Carrier
 #define TFT_RST 0  // "RX1" on left side of Sparkfun ML Carrier
 #else // PJRC_BREAKOUT
-#define TFT_DC  9
+#define TFT_DC  4
 #define TFT_CS  10
 #define TFT_RST 255  // none
 #endif
@@ -109,6 +109,7 @@ uint8_t frameBuffer[(324) * 244];
 uint8_t sendImageBuf[(324) * 244 * 2];
 uint8_t frameBuffer2[(324) * 244] DMAMEM;
 
+bool g_continuous_mode = false;
 bool g_continuous_flex_mode = false;
 void * volatile g_new_flexio_data = nullptr;
 uint32_t g_flexio_capture_count = 0;
@@ -118,6 +119,89 @@ bool g_dma_mode = false;
 
 ae_cfg_t aecfg;
 
+
+
+uint32_t pCnt = 1;
+uint32_t glpPri = 0;
+uint32_t numI32 = 3;
+
+elapsedMicros prTime;
+IntervalTimer isrPrime_it;
+bool g_intervalTimer_mode = false;
+
+const int PrPS=1000 * 36;
+#define usPTimer 1000000/PrPS
+#define priRestart 53680457 // 107361011 // 107375183 // 2147503639
+uint32_t secCC;
+
+void setupPR() {
+  Serial.println("\n" __FILE__ " " __DATE__ " " __TIME__);
+  isrPrime_it.priority(255);
+}
+volatile uint32_t glpCnt = 0;
+volatile uint32_t showCntsA = 0;
+volatile uint32_t showCntsB = 0;
+volatile uint32_t showCnts = 0;
+volatile uint32_t gipCyc = 0;
+
+void loopPR() {
+  glpCnt++;
+  if ( showCnts ) {
+    Serial.print( "Cnt LP=" );
+    Serial.print( showCnts );
+    Serial.print( "\tCnt Pri=" );
+    Serial.print( showCntsA );
+    Serial.print( "\tlast Pri=" );
+    Serial.print( showCntsB );
+    Serial.print( "\tms=" );
+    Serial.print( millis() );
+    Serial.print( "\tipCyc=" );
+    Serial.print( (float)gipCyc/F_CPU_ACTUAL );
+    Serial.print( "\n" );
+    showCnts = 0;
+    glpCnt = 0;
+  }
+}
+uint32_t ipCnt = 0;
+uint32_t ipCyc = 0;
+void isrPrime() {
+  uint32_t ipCycT = ARM_DWT_CYCCNT;
+  ipCnt++;
+  if ( ARM_DWT_CYCCNT - secCC >= F_CPU_ACTUAL ) {
+    secCC = ARM_DWT_CYCCNT;
+    showCnts = glpCnt;
+    showCntsA = ipCnt;
+    showCntsB = glpPri;
+    ipCnt = 0;
+    numI32 = priRestart;
+    gipCyc = ipCyc;
+    ipCyc=0;
+  }
+  //return;
+  uint32_t diviI32 = 3;
+  uint32_t lim = sqrt(numI32);
+  int flg = 0;
+  while ( diviI32 <= lim ) {
+    if ( ( numI32 % diviI32 )) {
+      diviI32 += 2.0;
+      continue;
+    }
+    flg = 1;
+    break;
+  }
+  if ( flg == 0 ) {
+    pCnt++;
+    glpPri = numI32;
+  }
+  numI32 += 2.0;
+ ipCyc += ARM_DWT_CYCCNT -ipCycT;
+}
+
+
+
+
+
+
 void setup()
 {
 #ifdef TFT_ILI9341
@@ -125,7 +209,7 @@ void setup()
 #else
   tft.init(240, 320);           // Init ST7789 320x240
 #endif
-  tft.setRotation(3);
+  tft.setRotation(1);
   tft.fillScreen(TFT_RED);
   delay(500);
   tft.fillScreen(TFT_GREEN);
@@ -226,7 +310,24 @@ void setup()
   FRAME_WIDTH  = hm01b0.width();
   Serial.printf("ImageSize (w,h): %d, %d\n", FRAME_WIDTH, FRAME_HEIGHT);
 
+  setupPR();
   showCommandList();
+}
+
+
+uint8_t *last_dma_frame_buffer = nullptr;
+uint8_t *image_buffer_display = sendImageBuf; // BUGBUG using from somewhere else for now...
+
+bool hm01b0_dma_callback(void *pfb) {
+  //Serial.printf("Callback: %x\n", (uint32_t)pfb);
+  if (tft.asyncUpdateActive()) return false; // don't use if we are already busy
+  tft.setOrigin(-2, -2);
+  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)pfb, mono_palette);
+  tft.setOrigin(0, 0);
+  tft.updateScreenAsync();
+
+  last_dma_frame_buffer = (uint8_t*)pfb;
+  return true;
 }
 
 bool hm01b0_flexio_callback(void *pfb)
@@ -236,9 +337,30 @@ bool hm01b0_flexio_callback(void *pfb)
   return true;
 }
 
+void tft_frame_cb() {
+  tft.setOrigin(-2, -2);
+  if (tft.subFrameCount()) {
+    // so finished drawing the top half of the display
+    tft.setClipRect(0, 0, tft.width(), tft.height() / 2);
+    tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)image_buffer_display, mono_palette);
+    // Lets play with buffers here. 
+  } else {
+    tft.setClipRect(0, tft.height() / 2, tft.width(), tft.height() / 2);      
+    tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)image_buffer_display, mono_palette);
+    if (last_dma_frame_buffer) {
+        hm01b0.changeFrameBuffer(last_dma_frame_buffer, image_buffer_display);
+        image_buffer_display = last_dma_frame_buffer;
+        last_dma_frame_buffer = nullptr;
+    }
+  }
+  tft.setOrigin(0, 0);
+  tft.setClipRect();
+}
+
 void loop()
 {
   char ch;
+  loopPR();
   #if defined(USB_DUAL_SERIAL) || defined(USB_TRIPLE_SERIAL)
   while (SerialUSB1.available()) {
     ch = SerialUSB1.read();
@@ -268,6 +390,7 @@ void loop()
         send_raw();
         Serial.println("Image Sent!");
         ch = ' ';
+        g_continuous_mode = false;
   #else
         Serial.println("*** Only works in USB Dual or Triple Serial Mode ***");
   #endif
@@ -295,6 +418,10 @@ void loop()
 
       case 'f':
       {
+        if (g_dma_mode) {
+          Serial.println("Must stop Video first!");
+          break;
+        }
         tft.useFrameBuffer(false);
         tft.fillScreen(TFT_BLACK);
         //calAE();
@@ -311,6 +438,14 @@ void loop()
       }
       case 'F':
       {
+          if (g_continuous_mode) {
+            g_continuous_mode = false;
+            Serial.println("*** Continuous mode turned off");
+          } else {
+            g_continuous_mode = true;
+            Serial.println("*** Continuous mode turned on");
+          break;
+        }
         if (!g_continuous_flex_mode) {
           if (hm01b0.readContinuous(&hm01b0_flexio_callback, frameBuffer, frameBuffer2)) {
             Serial.println("* continuous mode started");
@@ -339,6 +474,21 @@ void loop()
           Serial.println(F("READY. END"));
           break;
       }
+
+    case 't':
+      {
+        if ( g_intervalTimer_mode ) {
+          isrPrime_it.end();
+        }
+        else {
+          isrPrime_it.begin(isrPrime, usPTimer);
+        }
+        g_intervalTimer_mode = !g_intervalTimer_mode;
+        ch = ' ';
+        break;
+      }
+  
+
       case '?':
       {
         showCommandList();
@@ -371,6 +521,15 @@ void loop()
       }
     }
   }
+
+  if (g_continuous_mode) {
+    memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
+    hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
+    hm01b0.readFrame(frameBuffer);
+    tft.setOrigin(-2, -2);
+    tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, frameBuffer, mono_palette);
+    tft.setOrigin(0, 0);
+  }
 }
 
 // Pass 8-bit (each) R,G,B, get back 16-bit packed color
@@ -379,7 +538,6 @@ uint16_t color565(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 
-DMAMEM unsigned char image[324*244];
 void send_image( Stream *imgSerial) {
   uint32_t imagesize;
   imagesize = (320 * 240 * 2);
@@ -512,6 +670,7 @@ void showCommandList() {
   Serial.println("Send the 'p' character to snapshot to PC on USB1");
   Serial.println("Send the 'b' character to save snapshot (BMP) to SD Card");
   Serial.println("Send the '1' character to blank the display");
+  Serial.println("Send the 't' character to toggle intervalTimer");
   Serial.println("Send the 'z' character to send current screen BMP to SD");
   Serial.println();
 }
