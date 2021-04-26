@@ -282,6 +282,7 @@ void loop() {
       //calAE();
       Serial.println("Reading frame using FlexIO");
       memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
+      calAE();
       hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
       hm01b0.readFrame(frameBuffer);
       uint32_t image_idx = 0;
@@ -508,6 +509,18 @@ void send_image() {
 
   Serial.println(F("ACK CMD CAM Capture Done. END"));delay(50);
 
+}
+
+void calAE() {
+  // Calibrate Autoexposure
+  Serial.println("Calibrating Auto Exposure...");
+  memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
+  if (hm01b0.cal_ae(10, frameBuffer, FRAME_WIDTH * FRAME_HEIGHT, &aecfg) != HM01B0_ERR_OK) {
+    Serial.println("\tnot converged");
+  } else {
+    Serial.println("\tconverged!");
+    hm01b0.cmdUpdate();
+  }
 }
 
 void showCommandList() {
