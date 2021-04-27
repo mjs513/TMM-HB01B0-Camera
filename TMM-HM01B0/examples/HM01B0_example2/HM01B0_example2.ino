@@ -37,7 +37,7 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
 };
 
 
-#define _hmConfig 3 // select mode string below
+#define _hmConfig 2 // select mode string below
 
 PROGMEM const char hmConfig[][48] = {
  "HM01B0_SPARKFUN_ML_CARRIER",
@@ -109,7 +109,6 @@ uint8_t frameBuffer[(324) * 244];
 uint8_t sendImageBuf[(324) * 244 * 2];
 uint8_t frameBuffer2[(324) * 244] DMAMEM;
 
-bool g_continuous_mode = false;
 bool g_continuous_flex_mode = false;
 void * volatile g_new_flexio_data = nullptr;
 uint32_t g_flexio_capture_count = 0;
@@ -119,8 +118,6 @@ bool g_dma_mode = false;
 
 ae_cfg_t aecfg;
 
-
-
 uint32_t pCnt = 1;
 uint32_t glpPri = 0;
 uint32_t numI32 = 3;
@@ -129,34 +126,64 @@ elapsedMicros prTime;
 IntervalTimer isrPrime_it;
 bool g_intervalTimer_mode = false;
 
-const int PrPS=1000 * 36;
-#define usPTimer 1000000/PrPS
-#define priRestart 53680457 // 107361011 // 107375183 // 2147503639
-uint32_t secCC;
+const int PrPS=1000 * 220; // pick number 30K to 120K, 220K or more net completed depends on priRestart val and tableSize
+#define usPTimer 1000000.0/PrPS // intervalTimer us freq val
+#define priRestart 107361011 // Larger Primes takes longer :: 65537 // 53680457 // 107361011 // 107375183 // 2147503639 // 2147712181 
+uint32_t secCC; // time 1 second passing in _isr calls for loop update display
+
+#define tableSize 8095  // --8095 gives 82813 is 8095th prime :: runs faster!  :: SET TO 1 TO SKIP CACHE !!!
+DMAMEM uint32_t pCache[tableSize]; // holds prime 82813 - good up to 6857992969. Prime 65537 is 6543'rd good for 2^32 testing.
+//uint32_t pCache[tableSize]; // holds prime 82813 - good up to 6857992969. Prime 65537 is 6543'rd good for 2^32 testing.
+void fillCache() {
+  uint32_t numI32 = 3;
+  Serial.printf( "START Fill Cache :: %lu\n", millis() );
+  pCache[0] = 2;
+  uint32_t ii = 1;
+  while ( ii < tableSize ) {
+    uint32_t diviI32 = 3;
+    uint32_t lim = sqrt(numI32);
+    int flg = 0;
+    while ( diviI32 <= lim ) {
+      if ( ( numI32 % diviI32 )) {
+        diviI32 += 2.0;
+        continue;
+      }
+      flg = 1;
+      break;
+    }
+    if ( flg == 0 ) {
+      pCache[ii] = numI32;
+      ii++;
+    }
+    numI32 += 2.0;
+  }
+  Serial.printf( "END Fill Cache :: \tLast is %lu\t @ %lu\n", pCache[tableSize-1], millis() );
+}
 
 void setupPR() {
+  fillCache();
   Serial.println("\n" __FILE__ " " __DATE__ " " __TIME__);
   isrPrime_it.priority(255);
+  //isrPrime_it.priority(128);
 }
-volatile uint32_t glpCnt = 0;
+volatile uint32_t glpCnt = 0; // volatile globals for _isr to allow loop() to print
 volatile uint32_t showCntsA = 0;
 volatile uint32_t showCntsB = 0;
 volatile uint32_t showCnts = 0;
 volatile uint32_t gipCyc = 0;
-
 void loopPR() {
   glpCnt++;
   if ( showCnts ) {
-    Serial.print( "Cnt LP=" );
+    Serial.print( "LP#=" );
     Serial.print( showCnts );
-    Serial.print( "\tCnt Pri=" );
+    Serial.print( "\tPri#=" );
     Serial.print( showCntsA );
     Serial.print( "\tlast Pri=" );
     Serial.print( showCntsB );
     Serial.print( "\tms=" );
     Serial.print( millis() );
-    Serial.print( "\tipCyc=" );
-    Serial.print( (float)gipCyc/F_CPU_ACTUAL );
+    Serial.print( "\tipCyc%=" );
+    Serial.print( 100.0*gipCyc/F_CPU_ACTUAL );
     Serial.print( "\n" );
     showCnts = 0;
     glpCnt = 0;
@@ -181,9 +208,15 @@ void isrPrime() {
   uint32_t diviI32 = 3;
   uint32_t lim = sqrt(numI32);
   int flg = 0;
+  int ii=1;
   while ( diviI32 <= lim ) {
     if ( ( numI32 % diviI32 )) {
-      diviI32 += 2.0;
+      if ( ii < tableSize ) {
+        diviI32 = pCache[ ii ];
+        ii++;
+      }
+      else
+        diviI32 += 2.0;
       continue;
     }
     flg = 1;
@@ -194,13 +227,9 @@ void isrPrime() {
     glpPri = numI32;
   }
   numI32 += 2.0;
- ipCyc += ARM_DWT_CYCCNT -ipCycT;
+  asm volatile ("dsb":::"memory");
+  ipCyc += ARM_DWT_CYCCNT -ipCycT;
 }
-
-
-
-
-
 
 void setup()
 {
@@ -314,47 +343,11 @@ void setup()
   showCommandList();
 }
 
-
-uint8_t *last_dma_frame_buffer = nullptr;
-uint8_t *image_buffer_display = sendImageBuf; // BUGBUG using from somewhere else for now...
-
-bool hm01b0_dma_callback(void *pfb) {
-  //Serial.printf("Callback: %x\n", (uint32_t)pfb);
-  if (tft.asyncUpdateActive()) return false; // don't use if we are already busy
-  tft.setOrigin(-2, -2);
-  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)pfb, mono_palette);
-  tft.setOrigin(0, 0);
-  tft.updateScreenAsync();
-
-  last_dma_frame_buffer = (uint8_t*)pfb;
-  return true;
-}
-
 bool hm01b0_flexio_callback(void *pfb)
 {
   //Serial.println("Flexio callback");
   g_new_flexio_data = pfb;
   return true;
-}
-
-void tft_frame_cb() {
-  tft.setOrigin(-2, -2);
-  if (tft.subFrameCount()) {
-    // so finished drawing the top half of the display
-    tft.setClipRect(0, 0, tft.width(), tft.height() / 2);
-    tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)image_buffer_display, mono_palette);
-    // Lets play with buffers here. 
-  } else {
-    tft.setClipRect(0, tft.height() / 2, tft.width(), tft.height() / 2);      
-    tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)image_buffer_display, mono_palette);
-    if (last_dma_frame_buffer) {
-        hm01b0.changeFrameBuffer(last_dma_frame_buffer, image_buffer_display);
-        image_buffer_display = last_dma_frame_buffer;
-        last_dma_frame_buffer = nullptr;
-    }
-  }
-  tft.setOrigin(0, 0);
-  tft.setClipRect();
 }
 
 void loop()
@@ -390,7 +383,6 @@ void loop()
         send_raw();
         Serial.println("Image Sent!");
         ch = ' ';
-        g_continuous_mode = false;
   #else
         Serial.println("*** Only works in USB Dual or Triple Serial Mode ***");
   #endif
@@ -418,10 +410,6 @@ void loop()
 
       case 'f':
       {
-        if (g_dma_mode) {
-          Serial.println("Must stop Video first!");
-          break;
-        }
         tft.useFrameBuffer(false);
         tft.fillScreen(TFT_BLACK);
         //calAE();
@@ -438,14 +426,6 @@ void loop()
       }
       case 'F':
       {
-          if (g_continuous_mode) {
-            g_continuous_mode = false;
-            Serial.println("*** Continuous mode turned off");
-          } else {
-            g_continuous_mode = true;
-            Serial.println("*** Continuous mode turned on");
-          break;
-        }
         if (!g_continuous_flex_mode) {
           if (hm01b0.readContinuous(&hm01b0_flexio_callback, frameBuffer, frameBuffer2)) {
             Serial.println("* continuous mode started");
@@ -474,7 +454,6 @@ void loop()
           Serial.println(F("READY. END"));
           break;
       }
-
     case 't':
       {
         if ( g_intervalTimer_mode ) {
@@ -487,8 +466,6 @@ void loop()
         ch = ' ';
         break;
       }
-  
-
       case '?':
       {
         showCommandList();
@@ -520,15 +497,6 @@ void loop()
         Serial.printf("redraw rate = %.2f Hz\n", redraw_rate);
       }
     }
-  }
-
-  if (g_continuous_mode) {
-    memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-    hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-    hm01b0.readFrame(frameBuffer);
-    tft.setOrigin(-2, -2);
-    tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, frameBuffer, mono_palette);
-    tft.setOrigin(0, 0);
   }
 }
 
