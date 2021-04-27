@@ -126,9 +126,9 @@ elapsedMicros prTime;
 IntervalTimer isrPrime_it;
 bool g_intervalTimer_mode = false;
 
-const int PrPS=1000 * 80; // pick number 30K to 120K or more net completed depends on priRestart val and tableSize
-#define usPTimer 1000000/PrPS // intervalTimer us freq val
-#define priRestart 107375183 // Larger Primes takes longer :: 53680457 // 107361011 // 107375183 // 2147503639 // 2147712181 
+const int PrPS=1000 * 220; // pick number 30K to 120K, 220K or more net completed depends on priRestart val and tableSize
+#define usPTimer 1000000.0/PrPS // intervalTimer us freq val
+#define priRestart 107361011 // Larger Primes takes longer :: 65537 // 53680457 // 107361011 // 107375183 // 2147503639 // 2147712181 
 uint32_t secCC; // time 1 second passing in _isr calls for loop update display
 
 #define tableSize 8095  // --8095 gives 82813 is 8095th prime :: runs faster!  :: SET TO 1 TO SKIP CACHE !!!
@@ -227,7 +227,8 @@ void isrPrime() {
     glpPri = numI32;
   }
   numI32 += 2.0;
- ipCyc += ARM_DWT_CYCCNT -ipCycT;
+  asm volatile ("dsb":::"memory");
+  ipCyc += ARM_DWT_CYCCNT -ipCycT;
 }
 
 void setup()
