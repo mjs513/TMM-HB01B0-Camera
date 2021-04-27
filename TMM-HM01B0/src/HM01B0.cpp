@@ -1557,8 +1557,8 @@ bool HM01B0::startReadFlexIO(bool(*callback)(void *frame_buffer), void *fb1, voi
 
     // wait for VSYNC to be low
     while ((*_vsyncPort & _vsyncMask) != 0);
-    NVIC_SET_PRIORITY(IRQ_GPIO6789, 102);
-    NVIC_SET_PRIORITY(dma_flexio.channel & 0xf, 102);
+//    NVIC_SET_PRIORITY(IRQ_GPIO6789, 102);
+//    NVIC_SET_PRIORITY(dma_flexio.channel & 0xf, 102);
     attachInterrupt(VSYNC_PIN, &frameStartInterruptFlexIO, RISING);
     return true;
 #else

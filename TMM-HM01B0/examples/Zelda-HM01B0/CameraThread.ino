@@ -17,11 +17,23 @@ bool hm01b0_flexio_callback(void *pfb)
 {
   //Serial.println("Flexio callback");
   static uint8_t callback_count = 0;
-  if (callback_count < 50) {
     Serial.print("#");
     callback_count++;
-  }
+    if (!(callback_count & 0x3f)) Serial.println();
   g_new_flexio_data = pfb;
+  return true;
+}
+
+bool hm01b0_flexio_callback_video(void *pfb)
+{
+  //Serial.println("Flexio callback");
+  static uint8_t callback_count = 0;
+    Serial.print("#");
+    callback_count++;
+    if (!(callback_count & 0x3f)) Serial.println();
+  tft.setOrigin(-2, -2);
+  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)pfb, mono_palette);
+  tft.setOrigin(0, 0);
   return true;
 }
 
@@ -289,7 +301,7 @@ void camLoop() {
         tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, frameBuffer, mono_palette);
         tft.setOrigin(0, 0);
         ch = ' ';
-        g_continuous_flex_mode = false;
+        g_continuous_flex_mode = 0;
         break;
       }
       case 'F':
@@ -299,13 +311,34 @@ void camLoop() {
             Serial.println("* continuous mode started");
             g_flexio_capture_count = 0;
             g_flexio_redraw_count = 0;
-            g_continuous_flex_mode = true;
+            g_continuous_flex_mode = 1;
           } else {
             Serial.println("* error, could not start continuous mode");
           }
         } else {
           hm01b0.stopReadContinuous();
-          g_continuous_flex_mode = false;
+          tft.endUpdateAsync();
+          g_continuous_flex_mode = 0;
+          Serial.println("* continuous mode stopped");
+        }
+        break;
+      }
+      case 'V':
+      {
+        if (!g_continuous_flex_mode) {
+          if (hm01b0.readContinuous(&hm01b0_flexio_callback_video, frameBuffer, frameBuffer2)) {
+           tft.updateScreenAsync(true);
+            Serial.println("* continuous mode (Video) started");
+            g_flexio_capture_count = 0;
+            g_flexio_redraw_count = 0;
+            g_continuous_flex_mode = 2;
+          } else {
+            Serial.println("* error, could not start continuous mode");
+          }
+        } else {
+          hm01b0.stopReadContinuous();
+          tft.endUpdateAsync();
+          g_continuous_flex_mode = 0;
           Serial.println("* continuous mode stopped");
         }
         break;
@@ -335,22 +368,27 @@ void camLoop() {
    }
 
 
-  if ( g_continuous_flex_mode ) {
+  if ( g_continuous_flex_mode == 1 ) {
     if (g_new_flexio_data) {
       //Serial.println("new FlexIO data");
-      tft.setOrigin(-2, -2);
-      tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t *)g_new_flexio_data, mono_palette);
-      tft.setOrigin(0, 0);
-      tft.updateScreenAsync();
-      g_new_flexio_data = nullptr;
-      g_flexio_redraw_count++;
-      if (g_flexio_runtime > 10000) {
-        // print some stats on actual speed, but not too much
-        // printing too quickly to be considered "spew"
-        float redraw_rate = (float)g_flexio_redraw_count / (float)g_flexio_runtime * 1000.0f;
-        g_flexio_runtime = 0;
-        g_flexio_redraw_count = 0;
-        Serial.printf("redraw rate = %.2f Hz\n", redraw_rate);
+      if (tft.asyncUpdateActive()) {
+        Serial.print("!");
+      } else {
+        Serial.print("%");
+        tft.setOrigin(-2, -2);
+        tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t *)g_new_flexio_data, mono_palette);
+        tft.setOrigin(0, 0);
+        tft.updateScreenAsync();
+        g_new_flexio_data = nullptr;
+        g_flexio_redraw_count++;
+        if (g_flexio_runtime > 10000) {
+          // print some stats on actual speed, but not too much
+          // printing too quickly to be considered "spew"
+          float redraw_rate = (float)g_flexio_redraw_count / (float)g_flexio_runtime * 1000.0f;
+          g_flexio_runtime = 0;
+          g_flexio_redraw_count = 0;
+          Serial.printf("redraw rate = %.2f Hz\n", redraw_rate);
+        }
       }
     }
   }
