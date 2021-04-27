@@ -132,7 +132,8 @@ const int PrPS=1000 * 80; // pick number 30K to 120K or more net completed depen
 uint32_t secCC; // time 1 second passing in _isr calls for loop update display
 
 #define tableSize 8095  // --8095 gives 82813 is 8095th prime :: runs faster!  :: SET TO 1 TO SKIP CACHE !!!
-uint32_t pCache[tableSize]; // holds prime 82813 - good up to 6857992969. Prime 65537 is 6543'rd good for 2^32 testing.
+DMAMEM uint32_t pCache[tableSize]; // holds prime 82813 - good up to 6857992969. Prime 65537 is 6543'rd good for 2^32 testing.
+//uint32_t pCache[tableSize]; // holds prime 82813 - good up to 6857992969. Prime 65537 is 6543'rd good for 2^32 testing.
 void fillCache() {
   uint32_t numI32 = 3;
   Serial.printf( "START Fill Cache :: %lu\n", millis() );
