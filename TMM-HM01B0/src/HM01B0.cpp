@@ -50,7 +50,7 @@ SOFTWARE.
 
 //#define DEBUG_CAMERA
 //#define DEBUG_CAMERA_VERBOSE
-#define DEBUG_FLEXIO
+//#define DEBUG_FLEXIO
 
 const uint16_t default_regs[][2] = {
     {BLC_TGT,              0x08},          //  BLC target :8  at 8 bit mode
@@ -1052,7 +1052,6 @@ int HM01B0::init()
 			pinMode(pin, INPUT_PULLUP);
 		}
 	} else {
-		Serial.println("8 Data pins configured");
 		for (uint8_t pin : {G0, G1, G2, G3, G4, G5, G6, G7})
 		{
 			pinMode(pin, INPUT_PULLUP);
@@ -1342,6 +1341,7 @@ bool HM01B0::flexio_configure()
 #endif
     
     if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT) {
+		Serial.println("8Bit FlexIO");
         // SHIFTCFG, page 2927
         //  PWIDTH: number of bits to be shifted on each Shift clock
         //          0 = 1 bit, 1-3 = 4 bit, 4-7 = 8 bit, 8-15 = 16 bit, 16-31 = 32 bit

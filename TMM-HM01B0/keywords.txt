@@ -1,5 +1,4 @@
-HM01B0	KEYWORD2
-init	KEYWORD2
+HM01B0	KEYWORD1
 set_pixformat	KEYWORD2
 set_framesize	KEYWORD2
 set_framerate	KEYWORD2
@@ -10,7 +9,7 @@ set_auto_gain	KEYWORD2
 get_vt_pix_clk	KEYWORD2
 get_gain_db	KEYWORD2
 getCameraClock	KEYWORD2
-set_auto_exposure	KEYWORD2
+set_autoExposure	KEYWORD2
 get_exposure_us	KEYWORD2
 set_hmirror	KEYWORD2
 set_vflip	KEYWORD2
