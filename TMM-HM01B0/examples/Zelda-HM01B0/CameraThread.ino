@@ -16,6 +16,11 @@ bool hm01b0_dma_callback(void *pfb) {
 bool hm01b0_flexio_callback(void *pfb)
 {
   //Serial.println("Flexio callback");
+  static uint8_t callback_count = 0;
+  if (callback_count < 50) {
+    Serial.print("#");
+    callback_count++;
+  }
   g_new_flexio_data = pfb;
   return true;
 }
@@ -209,8 +214,8 @@ void calAE() {
   }
 }
 
-void camerathread() {
-  while(1) {
+void camLoop() {
+  //while(1) {
   char ch;
   #if defined(USB_DUAL_SERIAL) || defined(USB_TRIPLE_SERIAL)
   while (SerialUSB1.available()) {
@@ -350,6 +355,6 @@ void camerathread() {
     }
   }
 
-    threads.yield();
-  }
+    //threads.yield();
+  //}
 }

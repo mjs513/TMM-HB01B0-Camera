@@ -14,7 +14,6 @@
 #include <stdint.h>
 #include "HM01B0.h"
 #include "HM01B0_regs.h"
-#include "TeensyThreads.h"
 
 #define MCP(m) (uint16_t)(((m & 0xF8) << 8) | ((m & 0xFC) << 3) | (m >> 3))
 
@@ -330,7 +329,6 @@ void setup() {
 	//guitarHeroTimer.begin(guitarHeroMode, 1000000/120);
 	//midiMapTimer.begin(printVoices, 5000);
 
-  int cam = threads.addThread(camerathread);
   delay(2000);
 }
 
@@ -373,6 +371,7 @@ void loop() {
         wavetable[chan].setInstrument(MutedTrumpet);
         break;
     }
+    camLoop();
     return;
   }
   
@@ -384,6 +383,7 @@ void loop() {
   
   // Play the note on 'chan'
   if(opcode == CMD_PLAYNOTE) {
+    camLoop();
     unsigned char note = *sp++;
     unsigned char velocity = *sp++;
     wavetable[chan].playNote((byte)note);
@@ -409,7 +409,7 @@ void loop() {
 	//if (buttons[2].fallingEdge())
 	//	guitarHeroTimer.begin(guitarHeroMode, 1000000/60);
 
-
+camLoop();
 }
 
 int allocateVoice(byte channel, byte note);
