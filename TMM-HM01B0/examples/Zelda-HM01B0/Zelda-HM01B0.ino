@@ -121,7 +121,7 @@ uint8_t sendImageBuf[(324) * 244 * 2];
 uint8_t frameBuffer2[(324) * 244] DMAMEM;
 
 bool g_continuous_mode = false;
-bool g_continuous_flex_mode = false;
+uint8_t g_continuous_flex_mode = 0; // 0 no, 1=F command, 2= V command
 void * volatile g_new_flexio_data = nullptr;
 uint32_t g_flexio_capture_count = 0;
 uint32_t g_flexio_redraw_count = 0;
