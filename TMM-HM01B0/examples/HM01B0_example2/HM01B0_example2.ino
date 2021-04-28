@@ -48,7 +48,7 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
 };
 
 
-#define _hmConfig 1 // select mode string below
+#define _hmConfig 2 // select mode string below
 
 PROGMEM const char hmConfig[][48] = {
  "HM01B0_SPARKFUN_ML_CARRIER",
@@ -87,7 +87,7 @@ File file;
 #define TFT_CS  4   // "CS" on left side of Sparkfun ML Carrier
 #define TFT_RST 0  // "RX1" on left side of Sparkfun ML Carrier
 #else // PJRC_BREAKOUT
-#define TFT_DC  9
+#define TFT_DC  4
 #define TFT_CS  10
 #define TFT_RST 255  // none
 #endif
@@ -137,7 +137,7 @@ elapsedMicros prTime;
 IntervalTimer isrPrime_it;
 bool g_intervalTimer_mode = false;
 
-const int PrPS=1000 * 180; // pick number 30K to 120K, 220K or more net completed depends on priRestart val and tableSize
+const int PrPS=1000 * 150; // pick number 30K to 120K, 220K or more net completed depends on priRestart val and tableSize
 #define usPTimer 1000000.0/PrPS // intervalTimer us freq val
 #define priRestart 107375183 // Larger Primes takes longer :: 65537 // 53680457 // 107361011 // 107375183 // 2147503639 // 2147712181
 uint32_t secCC; // time 1 second passing in _isr calls for loop update display
@@ -183,20 +183,22 @@ void setupPR() {
   // Show initial display buffer contents on the screen --
   // the library initializes this with an Adafruit splash screen.
   Serial5.begin( 1000000 );
-  Serial5.print( "The lazy brown fox ate the quick red dog's food!\n");
+  Serial5.print( "The lazy brown fox ate the quick red dog's food! Blah Blah Blah Blah ...\n");
   display.display();
   delay(100);
   display.clearDisplay();
   display.display();
-  //isrPrime_it.priority(144);
-  isrPrime_it.priority(122);
-  //NVIC_SET_PRIORITY(IRQ_GPIO6789, 102);
+  isrPrime_it.priority(144);
+  //isrPrime_it.priority(122);
+  hm01b0.setVSyncISRPriority(102);
+  hm01b0.setDMACompleteISRPriority(102);
 }
 volatile uint32_t glpCnt = 0; // volatile globals for _isr to allow loop() to print
 volatile uint32_t showCntsA = 0;
 volatile uint32_t showCntsB = 0;
 volatile uint32_t showCnts = 0;
 volatile uint32_t gipCyc = 0;
+volatile uint32_t gser5Cnt = 0;
 void busy1306() {
   static int i=0;
   if (i>=display.height()/2) {
@@ -213,6 +215,7 @@ void busy1306() {
   ii = Serial5.available();
   while ( ii>0 ) {
     Serial5.write( cc=Serial5.read(  ) );
+    gser5Cnt++;
     //if (cc=='\n' ) Serial.print(".");
     ii--;
   }
@@ -223,19 +226,21 @@ void loopPR() {
   if ( showCnts ) {
     Serial.print( "LP#=" );
     Serial.print( showCnts );
-    Serial.print( "\tPri#=" );
+    Serial.print( "\tPisr#=" );
     Serial.print( showCntsA );
-    Serial.print( "\tlast Pri=" );
+    Serial.print( "  lastPR=" );
     Serial.print( showCntsB );
-    Serial.print( "\tms=" );
+    Serial.print( "  ms=" );
     Serial.print( millis() );
-    Serial.print( "\tipCyc%=" );
+    Serial.print( "  ipCyc%=" );
     Serial.print( 100.0*gipCyc/F_CPU_ACTUAL );
-   Serial.printf( "\tdeg  C=%u" , (uint32_t)tempmonGetTemp() );
+    Serial.print( "  S5#=" );
+    Serial.print( gser5Cnt );
+   Serial.printf( "  %uC" , (uint32_t)tempmonGetTemp() );
     Serial.print( "\n" );
     showCnts = 0;
     glpCnt = 0;
-
+    gser5Cnt = 0;
   }
 }
 uint32_t ipCnt = 0;
@@ -366,7 +371,7 @@ void setup()
     Serial.println("Settings failed to load");
     while (1) {}
   }
-  hm01b0.set_framerate(60);  //15, 30, 60, 120
+  hm01b0.set_framerate(30);  //15, 30, 60, 120
 
   /* Gain Ceilling
    * GAINCEILING_1X
@@ -721,6 +726,7 @@ void save_image_SD() {
 void showCommandList() {
   Serial.println("Send the 'f' character to read a frame using FlexIO (changes hardware setup!)");
   Serial.println("Send the 'F' to start/stop continuous using FlexIO (changes hardware setup!)");
+  Serial.println("Send the 'V' character DMA to TFT async continueous  ...");
   Serial.println("Send the 'p' character to snapshot to PC on USB1");
   Serial.println("Send the 'b' character to save snapshot (BMP) to SD Card");
   Serial.println("Send the '1' character to blank the display");
