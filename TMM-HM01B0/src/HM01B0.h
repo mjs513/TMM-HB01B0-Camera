@@ -171,6 +171,9 @@ class HM01B0
 	inline uint32_t frameCount() {return _dma_frame_count;}
 	inline void *frameBuffer() {return _dma_last_completed_frame;}
 	void captureFrameStatistics();
+	
+	void setVSyncISRPriority(uint8_t priority) {NVIC_SET_PRIORITY(IRQ_GPIO6789, priority); }
+	void setDMACompleteISRPriority(uint8_t priority) {NVIC_SET_PRIORITY(dma_flexio.channel & 0xf, priority); }
 
 	//-------------------------------------------------------
 	uint16_t _width, _height;  //width, height

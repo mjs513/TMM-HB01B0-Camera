@@ -1,25 +1,13 @@
 uint8_t *last_dma_frame_buffer = nullptr;
 uint8_t *image_buffer_display = sendImageBuf; // BUGBUG using from somewhere else for now...
 
-bool hm01b0_dma_callback(void *pfb) {
-  //Serial.printf("Callback: %x\n", (uint32_t)pfb);
-  if (tft.asyncUpdateActive()) return false; // don't use if we are already busy
-  tft.setOrigin(-2, -2);
-  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)pfb, mono_palette);
-  tft.setOrigin(0, 0);
-  tft.updateScreenAsync();
-
-  last_dma_frame_buffer = (uint8_t*)pfb;
-  return true;
-}
-
 bool hm01b0_flexio_callback(void *pfb)
 {
   //Serial.println("Flexio callback");
-  static uint8_t callback_count = 0;
-    Serial.print("#");
-    callback_count++;
-    if (!(callback_count & 0x3f)) Serial.println();
+  //static uint8_t callback_count = 0;
+    //Serial.print("#");
+    //callback_count++;
+    //if (!(callback_count & 0x3f)) Serial.println();
   g_new_flexio_data = pfb;
   return true;
 }
@@ -34,18 +22,6 @@ bool hm01b0_flexio_callback_video(void *pfb)
   tft.setOrigin(-2, -2);
   tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)pfb, mono_palette);
   tft.setOrigin(0, 0);
-  return true;
-}
-
-bool hm01b0_dma_callback_video(void *pfb) {
-  // just remember the last frame given to us. 
-  //Serial.printf("Callback: %x\n", (uint32_t)pfb);
-  if (tft.asyncUpdateActive()) return false; // don't use if we are already busy
-  tft.setOrigin(-2, -2);
-  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)pfb, mono_palette);
-  tft.setOrigin(0, 0);
-  //tft.updateScreenAsync();
-  last_dma_frame_buffer = (uint8_t*)pfb;
   return true;
 }
 
@@ -341,6 +317,7 @@ void camLoop() {
           g_continuous_flex_mode = 0;
           Serial.println("* continuous mode stopped");
         }
+        ch = ' ';
         break;
       }
       case '1':
@@ -393,6 +370,6 @@ void camLoop() {
     }
   }
 
-    //threads.yield();
+  //  threads.yield();
   //}
 }

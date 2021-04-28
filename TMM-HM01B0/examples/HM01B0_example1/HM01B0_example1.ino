@@ -236,6 +236,19 @@ bool hm01b0_flexio_callback(void *pfb)
   return true;
 }
 
+bool hm01b0_flexio_callback_video(void *pfb)
+{
+  //Serial.println("Flexio callback");
+  static uint8_t callback_count = 0;
+    Serial.print("#");
+    callback_count++;
+    if (!(callback_count & 0x3f)) Serial.println();
+  tft.setOrigin(-2, -2);
+  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)pfb, mono_palette);
+  tft.setOrigin(0, 0);
+  return true;
+}
+
 void loop()
 {
   char ch;
@@ -325,6 +338,27 @@ void loop()
           g_continuous_flex_mode = false;
           Serial.println("* continuous mode stopped");
         }
+        break;
+      }
+      case 'V':
+      {
+        if (!g_continuous_flex_mode) {
+          if (hm01b0.readContinuous(&hm01b0_flexio_callback_video, frameBuffer, frameBuffer2)) {
+           tft.updateScreenAsync(true);
+            Serial.println("* continuous mode (Video) started");
+            g_flexio_capture_count = 0;
+            g_flexio_redraw_count = 0;
+            g_continuous_flex_mode = 2;
+          } else {
+            Serial.println("* error, could not start continuous mode");
+          }
+        } else {
+          hm01b0.stopReadContinuous();
+          tft.endUpdateAsync();
+          g_continuous_flex_mode = 0;
+          Serial.println("* continuous mode stopped");
+        }
+        ch = ' ';
         break;
       }
       case '1':
@@ -509,6 +543,7 @@ void save_image_SD() {
 void showCommandList() {
   Serial.println("Send the 'f' character to read a frame using FlexIO (changes hardware setup!)");
   Serial.println("Send the 'F' to start/stop continuous using FlexIO (changes hardware setup!)");
+  Serial.println("Send the 'V' character DMA to TFT async continueous  ...");
   Serial.println("Send the 'p' character to snapshot to PC on USB1");
   Serial.println("Send the 'b' character to save snapshot (BMP) to SD Card");
   Serial.println("Send the '1' character to blank the display");
