@@ -175,6 +175,7 @@ class HM01B0
 	void setVSyncISRPriority(uint8_t priority) {NVIC_SET_PRIORITY(IRQ_GPIO6789, priority); }
 	void setDMACompleteISRPriority(uint8_t priority) {NVIC_SET_PRIORITY(dma_flexio.channel & 0xf, priority); }
 
+
 	//-------------------------------------------------------
 	uint16_t _width, _height;  //width, height
 	int16_t width(void) { return _width; }
@@ -246,6 +247,7 @@ class HM01B0
 	uint8_t *_frame_buffer_pointer;
 	uint8_t *_frame_row_buffer_pointer; // start of the row
 	uint8_t _dma_index;
+	bool 	_dma_active;
 	enum {DMASTATE_INITIAL=0, DMASTATE_RUNNING, DMASTATE_STOP_REQUESTED, DMA_STATE_STOPPED};
 	volatile uint8_t _dma_state;
 	static void dmaInterrupt(); 
