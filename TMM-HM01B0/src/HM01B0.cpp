@@ -1079,7 +1079,7 @@ int HM01B0::init()
 	
 	flexio_configure();
 	setVSyncISRPriority(102);
-	setDMACompleteISRPriority(102);
+	setDMACompleteISRPriority(192);
 
 
 	set_pixformat(PIXFORMAT_GRAYSCALE);    //Sparkfun camera only supports grayscale

@@ -48,7 +48,7 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
 };
 
 
-#define _hmConfig 2 // select mode string below
+#define _hmConfig 1 // select mode string below
 
 PROGMEM const char hmConfig[][48] = {
  "HM01B0_SPARKFUN_ML_CARRIER",
@@ -87,7 +87,7 @@ File file;
 #define TFT_CS  4   // "CS" on left side of Sparkfun ML Carrier
 #define TFT_RST 0  // "RX1" on left side of Sparkfun ML Carrier
 #else // PJRC_BREAKOUT
-#define TFT_DC  4
+#define TFT_DC  9
 #define TFT_CS  10
 #define TFT_RST 255  // none
 #endif
@@ -393,6 +393,10 @@ void setup()
   FRAME_WIDTH  = hm01b0.width();
   Serial.printf("ImageSize (w,h): %d, %d\n", FRAME_WIDTH, FRAME_HEIGHT);
 
+  // Lets setup camera interrupt priorities:
+  //hm01b0.setVSyncISRPriority(102); // higher priority than default
+  hm01b0.setDMACompleteISRPriority(192); // lower than default
+
   setupPR();
   showCommandList();
 }
@@ -403,19 +407,45 @@ bool hm01b0_flexio_callback(void *pfb)
   g_new_flexio_data = pfb;
   return true;
 }
+// Quick and Dirty
+#define UPDATE_ON_CAMERA_FRAMES
+
+uint8_t *pfb_last_frame_returned = nullptr;
 
 bool hm01b0_flexio_callback_video(void *pfb)
 {
-  //Serial.println("Flexio callback");
-  static uint8_t callback_count = 0;
-    //Serial.print("#");
-    callback_count++;
-    //if (!(callback_count & 0x3f)) Serial.println();
+  pfb_last_frame_returned = (uint8_t*)pfb;
+#ifdef UPDATE_ON_CAMERA_FRAMES
   tft.setOrigin(-2, -2);
-  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)pfb, mono_palette);
+  if ((uint32_t)pfb_last_frame_returned >= 0x20200000u)
+    arm_dcache_delete(pfb_last_frame_returned, FRAME_WIDTH*FRAME_HEIGHT);
+
+  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)pfb_last_frame_returned, mono_palette);
+  pfb_last_frame_returned = nullptr;
   tft.setOrigin(0, 0);
+  uint16_t *pframebuf = tft.getFrameBuffer();
+  if ((uint32_t)pframebuf >= 0x20200000u) arm_dcache_flush(pframebuf, FRAME_WIDTH*FRAME_HEIGHT);
+#endif  
+  //Serial.print("#");
   return true;
 }
+
+void frame_complete_cb() {
+  //Serial.print("@");
+#ifndef UPDATE_ON_CAMERA_FRAMES
+  if (!pfb_last_frame_returned) return;
+  tft.setOrigin(-2, -2);
+  if ((uint32_t)pfb_last_frame_returned >= 0x20200000u)
+    arm_dcache_delete(pfb_last_frame_returned, FRAME_WIDTH*FRAME_HEIGHT);
+
+  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)pfb_last_frame_returned, mono_palette);
+  pfb_last_frame_returned = nullptr;
+  tft.setOrigin(0, 0);
+  uint16_t *pfb = tft.getFrameBuffer();
+  if ((uint32_t)pfb >= 0x20200000u) arm_dcache_flush(pfb, FRAME_WIDTH*FRAME_HEIGHT);
+#endif
+}
+
 
 void loop()
 {
@@ -513,7 +543,11 @@ void loop()
       {
         if (!g_continuous_flex_mode) {
           if (hm01b0.readContinuous(&hm01b0_flexio_callback_video, frameBuffer, frameBuffer2)) {
-           tft.updateScreenAsync(true);
+            Serial.println("Before Set frame complete CB");
+            if (!tft.useFrameBuffer(true)) Serial.println("Failed call to useFrameBuffer");
+            tft.setFrameCompleteCB(&frame_complete_cb, false);
+            Serial.println("Before UPdateScreen Async");
+            tft.updateScreenAsync(true);
             Serial.println("* continuous mode (Video) started");
             g_flexio_capture_count = 0;
             g_flexio_redraw_count = 0;
