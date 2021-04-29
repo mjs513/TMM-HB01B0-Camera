@@ -3,26 +3,47 @@ uint8_t *image_buffer_display = sendImageBuf; // BUGBUG using from somewhere els
 
 bool hm01b0_flexio_callback(void *pfb)
 {
-  //Serial.println("Flexio callback");
-  //static uint8_t callback_count = 0;
-    //Serial.print("#");
-    //callback_count++;
-    //if (!(callback_count & 0x3f)) Serial.println();
   g_new_flexio_data = pfb;
   return true;
 }
 
+// Quick and Dirty
+#define UPDATE_ON_CAMERA_FRAMES
+
+uint8_t *pfb_last_frame_returned = nullptr;
+
 bool hm01b0_flexio_callback_video(void *pfb)
 {
-  //Serial.println("Flexio callback");
-  static uint8_t callback_count = 0;
-    Serial.print("#");
-    callback_count++;
-    if (!(callback_count & 0x3f)) Serial.println();
+  pfb_last_frame_returned = (uint8_t*)pfb;
+#ifdef UPDATE_ON_CAMERA_FRAMES
   tft.setOrigin(-2, -2);
-  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)pfb, mono_palette);
+  if ((uint32_t)pfb_last_frame_returned >= 0x20200000u)
+    arm_dcache_delete(pfb_last_frame_returned, FRAME_WIDTH*FRAME_HEIGHT);
+
+  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)pfb_last_frame_returned, mono_palette);
+  pfb_last_frame_returned = nullptr;
   tft.setOrigin(0, 0);
+  uint16_t *pframebuf = tft.getFrameBuffer();
+  if ((uint32_t)pframebuf >= 0x20200000u) arm_dcache_flush(pframebuf, FRAME_WIDTH*FRAME_HEIGHT);
+#endif  
+  //Serial.print("#");
   return true;
+}
+
+void frame_complete_cb() {
+  //Serial.print("@");
+#ifndef UPDATE_ON_CAMERA_FRAMES
+  if (!pfb_last_frame_returned) return;
+  tft.setOrigin(-2, -2);
+  if ((uint32_t)pfb_last_frame_returned >= 0x20200000u)
+    arm_dcache_delete(pfb_last_frame_returned, FRAME_WIDTH*FRAME_HEIGHT);
+
+  tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t*)pfb_last_frame_returned, mono_palette);
+  pfb_last_frame_returned = nullptr;
+  tft.setOrigin(0, 0);
+  uint16_t *pfb = tft.getFrameBuffer();
+  if ((uint32_t)pfb >= 0x20200000u) arm_dcache_flush(pfb, FRAME_WIDTH*FRAME_HEIGHT);
+#endif
 }
 
 void tft_frame_cb() {
@@ -92,7 +113,7 @@ void send_raw() {
   SerialUSB1.write(sendImageBuf, imagesize); // set Tools > USB Type to "Dual Serial"
 }
 #endif
-
+#if defined(USE_SDCARD)
 char name[] = "9px_0000.bmp";       // filename convention (will auto-increment)
   DMAMEM unsigned char img[3 * 320*240];
 void save_image_SD() {
@@ -176,6 +197,7 @@ void save_image_SD() {
   file.close();                                        // close file when done writing
   Serial.println("Done Writing BMP");
 }
+#endif
 
 void showCommandList() {
   Serial.println("Send the 'f' character to read a frame using FlexIO (changes hardware setup!)");
@@ -188,7 +210,6 @@ void showCommandList() {
 
   Serial.println();
 }
-
 
 void calAE() {
   // Calibrate Autoexposure
@@ -284,6 +305,7 @@ void camLoop() {
       {
         if (!g_continuous_flex_mode) {
           if (hm01b0.readContinuous(&hm01b0_flexio_callback, frameBuffer, frameBuffer2)) {
+            if (!tft.useFrameBuffer(true)) Serial.println("Failed call to useFrameBuffer");
             Serial.println("* continuous mode started");
             g_flexio_capture_count = 0;
             g_flexio_redraw_count = 0;
@@ -303,7 +325,12 @@ void camLoop() {
       {
         if (!g_continuous_flex_mode) {
           if (hm01b0.readContinuous(&hm01b0_flexio_callback_video, frameBuffer, frameBuffer2)) {
-           tft.updateScreenAsync(true);
+
+            Serial.println("Before Set frame complete CB");
+            if (!tft.useFrameBuffer(true)) Serial.println("Failed call to useFrameBuffer");
+            tft.setFrameCompleteCB(&frame_complete_cb, false);
+            Serial.println("Before UPdateScreen Async");
+            tft.updateScreenAsync(true);
             Serial.println("* continuous mode (Video) started");
             g_flexio_capture_count = 0;
             g_flexio_redraw_count = 0;
@@ -348,24 +375,19 @@ void camLoop() {
   if ( g_continuous_flex_mode == 1 ) {
     if (g_new_flexio_data) {
       //Serial.println("new FlexIO data");
-      if (tft.asyncUpdateActive()) {
-        Serial.print("!");
-      } else {
-        Serial.print("%");
-        tft.setOrigin(-2, -2);
-        tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t *)g_new_flexio_data, mono_palette);
-        tft.setOrigin(0, 0);
-        tft.updateScreenAsync();
-        g_new_flexio_data = nullptr;
-        g_flexio_redraw_count++;
-        if (g_flexio_runtime > 10000) {
-          // print some stats on actual speed, but not too much
-          // printing too quickly to be considered "spew"
-          float redraw_rate = (float)g_flexio_redraw_count / (float)g_flexio_runtime * 1000.0f;
-          g_flexio_runtime = 0;
-          g_flexio_redraw_count = 0;
-          Serial.printf("redraw rate = %.2f Hz\n", redraw_rate);
-        }
+      tft.setOrigin(-2, -2);
+      tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, (uint8_t *)g_new_flexio_data, mono_palette);
+      tft.setOrigin(0, 0);
+      tft.updateScreenAsync();
+      g_new_flexio_data = nullptr;
+      g_flexio_redraw_count++;
+      if (g_flexio_runtime > 10000) {
+        // print some stats on actual speed, but not too much
+        // printing too quickly to be considered "spew"
+        float redraw_rate = (float)g_flexio_redraw_count / (float)g_flexio_runtime * 1000.0f;
+        g_flexio_runtime = 0;
+        g_flexio_redraw_count = 0;
+        Serial.printf("redraw rate = %.2f Hz\n", redraw_rate);
       }
     }
   }

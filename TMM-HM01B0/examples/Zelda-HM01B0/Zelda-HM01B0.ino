@@ -299,6 +299,10 @@ void setup() {
   FRAME_WIDTH  = hm01b0.width();
   Serial.printf("ImageSize (w,h): %d, %d\n", FRAME_WIDTH, FRAME_HEIGHT);
 
+  // Lets setup camera interrupt priorities:
+  //hm01b0.setVSyncISRPriority(102); // higher priority than default
+  hm01b0.setDMACompleteISRPriority(192); // lower than default
+
   showCommandList();
 
 
@@ -388,7 +392,7 @@ void loop() {
   // Play the note on 'chan'
   if(opcode == CMD_PLAYNOTE) {
     unsigned char note = *sp++;
-    unsigned char velocity = *sp++;
+    unsigned char velocity __attribute__((unused)) = *sp++;
     wavetable[chan].playNote((byte)note);
     //OnNoteOn(chan, (byte)note, (byte)velocity);
     camLoop();

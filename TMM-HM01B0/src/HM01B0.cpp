@@ -1556,6 +1556,7 @@ bool HM01B0::startReadFlexIO(bool(*callback)(void *frame_buffer), void *fb1, voi
     dma_flexio.attachInterrupt(dmaInterruptFlexIO);
     FLEXIO2_SHIFTSDEN = _fshifter_mask;
     _dma_frame_count = 0;
+    _dma_active = false;
 
     // wait for VSYNC to be low
     while ((*_vsyncPort & _vsyncMask) != 0);
@@ -1576,18 +1577,21 @@ void HM01B0::frameStartInterruptFlexIO()
 
 void HM01B0::processFrameStartInterruptFlexIO()
 {
-	FLEXIO2_SHIFTSTAT = _fshifter_mask; // clear any prior shift status
-	FLEXIO2_SHIFTERR = _fshifter_mask;
+    if (!_dma_active) {
+    	FLEXIO2_SHIFTSTAT = _fshifter_mask; // clear any prior shift status
+    	FLEXIO2_SHIFTERR = _fshifter_mask;
 
-	// TODO: could a prior status have a DMA request still be pending?
-	void *dest = (_dma_frame_count & 1) ? _frame_buffer_2 : _frame_buffer_1;
-	const uint32_t length = _width*_height;
-	//dma_flexio.TCD->DADDR = dest;
-	dma_flexio.destinationBuffer((uint32_t *)dest, length);
-	dma_flexio.transferSize(4);
-	dma_flexio.transferCount(length / 4);
-	dma_flexio.enable();
-	//Serial.println("VSYNC");
+    	// TODO: could a prior status have a DMA request still be pending?
+    	void *dest = (_dma_frame_count & 1) ? _frame_buffer_2 : _frame_buffer_1;
+    	const uint32_t length = _width*_height;
+    	//dma_flexio.TCD->DADDR = dest;
+    	dma_flexio.destinationBuffer((uint32_t *)dest, length);
+    	dma_flexio.transferSize(4);
+    	dma_flexio.transferCount(length / 4);
+    	dma_flexio.enable();
+    	//Serial.println("VSYNC");
+        _dma_active = true;
+    }
 	asm("DSB");
 }
 
@@ -1605,6 +1609,7 @@ void HM01B0::processDMAInterruptFlexIO()
 	_dma_frame_count++;
 	arm_dcache_delete(dest, length);
 	if (_callback) (*_callback)(dest); // TODO: use EventResponder
+    _dma_active = false;
 	asm("DSB");
 }
 
