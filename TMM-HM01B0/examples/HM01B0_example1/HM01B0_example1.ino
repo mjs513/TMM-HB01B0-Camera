@@ -449,7 +449,7 @@ uint16_t color565(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 
-DMAMEM unsigned char image[324*244];
+//DMAMEM unsigned char image[324*244];
 void send_image( Stream *imgSerial) {
   uint32_t imagesize;
   imagesize = (320 * 240 * 2);
