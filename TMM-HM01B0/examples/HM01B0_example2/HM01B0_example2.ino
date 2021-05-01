@@ -48,7 +48,7 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
 };
 
 
-#define _hmConfig 1 // select mode string below
+#define _hmConfig 2 // select mode string below
 
 PROGMEM const char hmConfig[][48] = {
  "HM01B0_SPARKFUN_ML_CARRIER",
@@ -87,7 +87,7 @@ File file;
 #define TFT_CS  4   // "CS" on left side of Sparkfun ML Carrier
 #define TFT_RST 0  // "RX1" on left side of Sparkfun ML Carrier
 #else // PJRC_BREAKOUT
-#define TFT_DC  9
+#define TFT_DC  4
 #define TFT_CS  10
 #define TFT_RST 255  // none
 #endif
@@ -137,9 +137,9 @@ elapsedMicros prTime;
 IntervalTimer isrPrime_it;
 bool g_intervalTimer_mode = false;
 
-const int PrPS=1000 * 150; // pick number 30K to 120K, 220K or more net completed depends on priRestart val and tableSize
+const int PrPS=1000 * 200; // pick number 30K to 120K, 220K or more net completed depends on priRestart val and tableSize
 #define usPTimer 1000000.0/PrPS // intervalTimer us freq val
-#define priRestart 107375183 // Larger Primes takes longer :: 65537 // 53680457 // 107361011 // 107375183 // 2147503639 // 2147712181
+#define priRestart 107361011 // Larger Primes takes longer :: 521 // 65537 // 53680457 // 107361011 // 107375183 // 2147503639 // 2147712181
 uint32_t secCC; // time 1 second passing in _isr calls for loop update display
 
 #define tableSize 8095  // --8095 gives 82813 is 8095th prime :: runs faster!  :: SET TO 1 TO SKIP CACHE !!!
@@ -188,8 +188,8 @@ void setupPR() {
   delay(100);
   display.clearDisplay();
   display.display();
-  isrPrime_it.priority(144);
-  //isrPrime_it.priority(122);
+  //isrPrime_it.priority(144);
+  isrPrime_it.priority(122);
   hm01b0.setVSyncISRPriority(102);
   hm01b0.setDMACompleteISRPriority(102);
 }
