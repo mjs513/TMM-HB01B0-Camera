@@ -78,7 +78,7 @@ HM01B0 hm01b0(7, 8, 33, 32, 2, 40, 41, 42, 43);
 #endif
 
 //#define USE_SPARKFUN 1
-//#define USE_SDCARD 1
+#define USE_SDCARD 1
 File file;
 
 #define MMOD_ML 0
@@ -171,7 +171,13 @@ void fillCache() {
   Serial.printf( "END Fill Cache :: \tLast is %lu\t @ %lu\n", pCache[tableSize-1], millis() );
 }
 
+int pinLEDS[]={26,27,28,30,31};
+#define PINCNT 5 // 0 to disable
 void setupPR() {
+  for (int jj=0; jj<PINCNT; jj++) {
+    pinMode( pinLEDS[jj], OUTPUT );
+    digitalWrite( pinLEDS[jj], LOW );
+  }
   fillCache();
   Serial.println("\n" __FILE__ " " __DATE__ " " __TIME__);
   // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
@@ -316,7 +322,6 @@ void setup()
   #else
     if (!SD.begin(BUILTIN_SDCARD)) {
   #endif
-    }
     Serial.println("initialization failed!");
     //while (1){
     //    LEDON; delay(100);
