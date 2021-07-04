@@ -584,7 +584,7 @@ void save_image_SD() {
 void showCommandList() {
   Serial.println("Send the 'f' character to read a frame using FlexIO (changes hardware setup!)");
   Serial.println("Send the 'F' to start/stop continuous using FlexIO (changes hardware setup!)");
-  Serial.println("Send the 'V' character DMA to TFT async continueous  ...");
+  Serial.println("Send the 'V' character DMA to TFT async continuous  ...");
   Serial.println("Send the 'p' character to snapshot to PC on USB1");
   Serial.println("Send the 'b' character to save snapshot (BMP) to SD Card");
   Serial.println("Send the '1' character to blank the display");
