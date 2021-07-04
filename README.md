@@ -28,13 +28,5 @@ Teensy DMA support also has been add to the library by PJRC user @KurtE based on
 
 See the PJRC Forum Thread MicroMod Beta Testing (https://forum.pjrc.com/threads/66771-MicroMod-Beta-Testing) for TMM.
 
-The example sketch has several options:
-Send the 's' character to read a frame ...
-Send the 'c' character to start/stop continuous display mode
-Send the 'p' character to snapshot to PC on USB1
-Send the 'd' character to read a frame using DMA ...
-Send the 'b' character to save snapshot (BMP) to SD Card
-send the 'r' Show Camera register settings
-Send the '0' character to blank the display
 
-If you want to send a snapshot to the processing sketch you will have to select Dual or Triple serial from the serial dropdown menu in the ide.
+If you want to send a snapshot to the processing sketch you will have to select Dual or Triple serial from the serial dropdown menu in the IDE.
