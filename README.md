@@ -30,3 +30,5 @@ See the PJRC Forum Thread MicroMod Beta Testing (https://forum.pjrc.com/threads/
 
 
 If you want to send a snapshot to the processing sketch you will have to select Dual or Triple serial from the serial dropdown menu in the IDE.
+
+One thing to keep in mind is that if you are uploading different camera settings quickly you will probably have to remove power for a minute.  The camera fails to get recognize if you upload quickly between sketches.
