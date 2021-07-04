@@ -51,7 +51,7 @@ HM01B0 hm01b0(7, 8, 33, 32, 2, 40, 41, 42, 43);
  *       using this combination.
  *    3. If using 8 bit/SparkfunML mode use set_framerate(60) with OpenMV config
  */
-//#define USE_SPARKFUN 1
+#define USE_SPARKFUN 1
 
 // If you want to use the SDCard to store images uncomment the following line
 #define USE_SDCARD 1
@@ -108,11 +108,10 @@ ae_cfg_t aecfg;
 
 void setup()
 {
+#ifdef TFT_ILI9341
   pinMode(TFT_BL, OUTPUT);
   digitalWrite(TFT_BL, HIGH);
   delay(100);
-  
-#ifdef TFT_ILI9341
   tft.begin();
 #else
   tft.init(240, 320);           // Init ST7789 320x240
@@ -133,7 +132,7 @@ void setup()
   tft.println("Waiting for Arduino Serial Monitor...");
 
   Serial.begin(921600);
-
+  
 #if defined(USE_SDCARD)
   Serial.println("Using SDCARD - Initializing");
   if (!SD.begin(10)) {
@@ -143,8 +142,6 @@ void setup()
   delay(100);
 #endif
 
-
-  while (!Serial) ;
   Serial.println("HM01B0 Camera Test");
   Serial.println( hmConfig[_hmConfig] );
   Serial.println("------------------");
@@ -551,7 +548,7 @@ void save_image_SD() {
 void showCommandList() {
   Serial.println("Send the 'f' character to read a frame using FlexIO (changes hardware setup!)");
   Serial.println("Send the 'F' to start/stop continuous using FlexIO (changes hardware setup!)");
-  Serial.println("Send the 'V' character DMA to TFT async continuous  ...");
+  Serial.println("Send the 'V' character DMA to TFT async continueous  ...");
   Serial.println("Send the 'p' character to snapshot to PC on USB1");
   Serial.println("Send the 'b' character to save snapshot (BMP) to SD Card");
   Serial.println("Send the '1' character to blank the display");
