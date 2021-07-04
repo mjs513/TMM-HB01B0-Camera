@@ -49,7 +49,7 @@ PROGMEM const char hmConfig[][48] = {
  "HM01B0_FLEXIO_CUSTOM_LIKE_4_BIT"
 };
 
-#define _hmConfig 0 // select mode 
+#define _hmConfig 1 // select mode 
 
 #if _hmConfig == 0
 HM01B0 hm01b0(HM01B0_SPARKFUN_ML_CARRIER);
@@ -79,10 +79,12 @@ HM01B0 hm01b0(7, 8, 33, 32, 2, 40, 41, 42, 43);
  *  If the define for USE_SPARKFUN is uncommented the sketch will use the Sparkfun configuration otherwise it will
  *  the OpenMV version which we modified slightly
  *  NOTE:
- *    If using 4 bit mode use set_framerate(60) with OpenMV config
- *  
+ *    1. If using 4 bit mode use set_framerate(60) with OpenMV config
+ *    2. If using 8 bit/Sparkfun ML with the Sparkfun config use frameRate of 30. You do get flicker    
+ *       using this combination.
+ *    3. If using 8 bit/SparkfunML mode use set_framerate(60) with OpenMV config
  */
-#define USE_SPARKFUN 1
+//#define USE_SPARKFUN 1
 
 // If you want to use the SDCard to store images uncomment the following line
 #define USE_SDCARD 1
@@ -98,8 +100,8 @@ File file;
 
 #define TFT_DC  1   // "TX1" on left side of Sparkfun ML Carrier
 #define TFT_CS  4   // "D0" on right side of Sparkfun ML Carrier
-#define TFT_RST 0  // "RX1" on left side of Sparkfun ML Carrier
-#define TFT_BL  5  // "D1" on right side of Sparkfun ML Carrier
+#define TFT_RST 0   // "RX1" on left side of Sparkfun ML Carrier
+#define TFT_BL  5   // "D1" on right side of Sparkfun ML Carrier
 
 #ifdef TFT_ST7789
 //ST7735 Adafruit 320x240 display
@@ -167,11 +169,7 @@ void setup()
 
 #if defined(USE_SDCARD)
   Serial.println("Using SDCARD - Initializing");
-  #if MMOD_ML==1
-    if (!SD.begin(10)) {
-  #else
-    if (!SD.begin(BUILTIN_SDCARD)) {
-  #endif
+  if (!SD.begin(10)) {
     Serial.println("initialization failed!");
   }
   Serial.println("initialization done.");
@@ -212,7 +210,7 @@ void setup()
     Serial.println("Settings failed to load");
     while (1) {}
   }
-  hm01b0.set_framerate(30);  //15, 30, 60
+  hm01b0.set_framerate(60);  //15, 30, 60
 
   /* Gain Ceilling
    * GAINCEILING_1X
