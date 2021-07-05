@@ -496,32 +496,21 @@ HM01B0::HM01B0(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hs
 int HM01B0::reset()
 {
     // Reset sensor.
-    uint8_t reg=0xff;
-    for (int retry=HIMAX_BOOT_RETRY; reg != HIMAX_MODE_STANDBY; retry--) {
-        if (retry == 0) {
+     if (cameraWriteRegister(SW_RESET, HIMAX_RESET) != 0) { //cambus_writeb2(&sensor->bus, sensor->slv_addr, SW_RESET, HIMAX_RESET
             return -1;
         }
-        if (cameraWriteRegister(SW_RESET, HIMAX_RESET) != 0) { //cambus_writeb2(&sensor->bus, sensor->slv_addr, SW_RESET, HIMAX_RESET
-            return -1;
-        }
-        // Delay for 1ms.
-        delay(1);
-        if (cameraWriteRegister(MODE_SELECT, reg) != 0) { //cambus_readb2(&sensor->bus, sensor->slv_addr, MODE_SELECT, &reg
-            return -1;
-        }
-    }
+		
+	// Delay for 1ms.
+	delay(1);
 
     // Write default regsiters
     int ret = 0;
     for (int i=0; default_regs[i][0] && ret == 0; i++) {
         ret |= cameraWriteRegister(default_regs[i][0], default_regs[i][1]);
     }
-
-    // Set PCLK polarity.
-    ret |= cameraWriteRegister(PCLK_POLARITY, (0x20 | PCLK_FALLING_EDGE));
     
     // Set mode to streaming
-    ret |= cameraWriteRegister( MODE_SELECT, HIMAX_MODE_STREAMING);
+    //ret |= cameraWriteRegister( MODE_SELECT, HIMAX_MODE_STREAMING);
 
     return ret;
 }
@@ -1080,13 +1069,14 @@ int HM01B0::init()
 	flexio_configure();
 	setVSyncISRPriority(102);
 	setDMACompleteISRPriority(192);
-
+	
+	reset();
 
 	set_pixformat(PIXFORMAT_GRAYSCALE);    //Sparkfun camera only supports grayscale
 	
 	//set_mode(HIMAX_MODE_STREAMING,0);
 		
-    return 0;
+    return 1;
 }
 
 #define FLEXIO_USE_DMA
