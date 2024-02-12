@@ -52,6 +52,8 @@ SOFTWARE.
 //#define DEBUG_CAMERA_VERBOSE
 //#define DEBUG_FLEXIO
 
+#define FLEXIO_TIMER_TRIGGER_SEL_PININPUT(x) ((uint32_t)(x) << 1U)
+
 const uint16_t default_regs[][2] = {
     {BLC_TGT,              0x08},          //  BLC target :8  at 8 bit mode
     {BLC2_TGT,             0x08},          //  BLI target :8  at 8 bit mode
@@ -443,6 +445,93 @@ const uint16_t sHM01B0Init_regs[][2] =
     {0x0000,            0x00},
 };
 
+//Arducam configuration
+const uint16_t Arducam_hm01b0_324x244[][2]  = {
+    {0x0103, 0x0},
+    {0x0100,0x00},  
+    {0x1003,0x08},
+    {0x1007,0x08}, 
+    {0x3044,0x0A},     
+    {0x3045,0x00},    
+    {0x3047,0x0A},    
+    {0x3050,0xC0},    
+    {0x3051,0x42}, 
+    {0x3052,0x50},
+    {0x3053,0x00},
+    {0x3054,0x03}, 
+    {0x3055,0xF7},
+    {0x3056,0xF8},
+    {0x3057,0x29},
+    {0x3058,0x1F},
+    {0x3059,0x1E},
+    {0x3064,0x00},
+    {0x3065,0x04},
+    {0x1000,0x43},
+    {0x1001,0x40},
+    {0x1002,0x32}, 
+    {0x0350,0x7F},
+    {0x1006,0x01},
+    {0x1008,0x00},
+    {0x1009,0xA0},
+    {0x100A,0x60},
+    {0x100B,0x90},
+    {0x100C,0x40},
+    {0x3022,0x01},
+    {0x1012,0x01},
+    {0x2000,0x07},
+    {0x2003,0x00}, 
+    {0x2004,0x1C},
+    {0x2007,0x00}, 
+    {0x2008,0x58}, 
+    {0x200B,0x00}, 
+    {0x200C,0x7A}, 
+    {0x200F,0x00},
+    {0x2010,0xB8},
+    {0x2013,0x00},
+    {0x2014,0x58},
+    {0x2017,0x00},
+    {0x2018,0x9B},
+    {0x2100,0x01},
+    {0x2101,0x5F},
+    {0x2102,0x0A},
+    {0x2103,0x03},
+    {0x2104,0x05},
+    {0x2105,0x02},
+    {0x2106,0x14},
+    {0x2107,0x02},
+    {0x2108,0x03},
+    {0x2109,0x03},
+    {0x210A,0x00},
+    {0x210B,0x80},
+    {0x210C,0x40},
+    {0x210D,0x20},
+    {0x210E,0x03},
+    {0x210F,0x00},
+    {0x2110,0x85},
+    {0x2111,0x00},
+    {0x2112,0xA0},
+    {0x2150,0x03},
+    {0x0340,0x01},
+    {0x0341,0x7A},
+    {0x0342,0x01},
+    {0x0343,0x77},
+    {0x3010,0x00},  //bit[0] 1 enable QVGA
+    {0x0383,0x01},
+    {0x0387,0x01},
+    {0x0390,0x00},
+    {0x3011,0x70},
+    {0x3059,0x22},
+    {0x3060,0x30},
+    {0x0101,0x01}, 
+    {0x0104,0x01},
+    //{0x0390,0x03},  //1/4 binning
+    //{0x0383,0x03},
+    //{0x0387,0x03},
+    //{0x1012,0x03},
+    {0x0100,0x01},
+    //============= End of regs marker ==================
+    {0x0000,            0x00},
+};
 
 // Constructor
 HM01B0::HM01B0(hw_carrier_t set_hw_carrier)
@@ -470,7 +559,7 @@ HM01B0::HM01B0(hw_carrier_t set_hw_carrier)
 		G4 = 0xFF;
   }
   
-  init();
+  //init();
 	
 }
 
@@ -489,7 +578,7 @@ HM01B0::HM01B0(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hs
 	    _hw_config = HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT;
   }
   
-  init();
+  //init();
 }
 
 
@@ -1023,13 +1112,17 @@ uint8_t HM01B0::get_ae( ae_cfg_t *psAECfg)
 }
 
 
-int HM01B0::init()
+bool HM01B0::begin(bool use_gpio)
 {
+    _use_gpio = use_gpio;
+
+    
 	_wire->begin();
 
 	pinMode(VSYNC_PIN, INPUT_PULLDOWN); // VSYNC Pin
 	pinMode(PCLK_PIN, INPUT_PULLDOWN);  //PCLK
 	pinMode(HSYNC_PIN, INPUT_PULLDOWN);  //HSYNC
+	//pinMode(MCLK_PIN, OUTPUT);
 	
 	/*Thanks to @luni for how to read 8bit port	\
 	 * https://forum.pjrc.com/threads/66771-MicroMod-Beta-Testing?p=275567&viewfull=1#post275567
@@ -1047,6 +1140,21 @@ int HM01B0::init()
 		}
 	}
 	
+#ifdef DEBUG_CAMERA
+  Serial.printf("  VS=%d, HR=%d, PC=%d XC=%d\n", VSYNC_PIN, HSYNC_PIN, PCLK_PIN, MCLK_PIN);
+  Serial.printf("  G0 = %d\n", G0);
+  Serial.printf("  G1 = %d\n", G1);
+  Serial.printf("  G2 = %d\n", G2);
+  Serial.printf("  G3 = %d\n", G3);
+  if(G4 != 0xFF){
+    Serial.printf("  G4 = %d\n", G4);
+    Serial.printf("  G5 = %d\n", G5);
+    Serial.printf("  G6 = %d\n", G6);
+    Serial.printf("  G7 = %d\n", G7);
+  }
+  
+#endif
+    
 	_vsyncMask = digitalPinToBitMask(VSYNC_PIN);
     _hrefMask = digitalPinToBitMask(HSYNC_PIN);
     _pclkMask = digitalPinToBitMask(PCLK_PIN);
@@ -1056,8 +1164,10 @@ int HM01B0::init()
     _pclkPort = portInputRegister(digitalPinToPort(PCLK_PIN));
 	
 	// turn on power to camera (1.8V - might be an issue?)
-	pinMode(EN_PIN, OUTPUT);
-	digitalWrite(EN_PIN, HIGH);
+	if(EN_PIN < 255) {
+		pinMode(EN_PIN, OUTPUT);
+		digitalWrite(EN_PIN, HIGH);
+	}
 	delay(10);
 
 	// turn on MCLK
@@ -1065,8 +1175,9 @@ int HM01B0::init()
 	analogWrite(MCLK_PIN, 128);
 	delay(5);
 	
-	
-	flexio_configure();
+    if (!_use_gpio) {
+        flexio_configure();
+    }
 	setVSyncISRPriority(102);
 	setDMACompleteISRPriority(192);
 	
@@ -1082,8 +1193,12 @@ int HM01B0::init()
 #define FLEXIO_USE_DMA
 void HM01B0::readFrame(void* buffer){
 	set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-	readFrameFlexIO(buffer);
-	
+    if(!_use_gpio) {
+        readFrameFlexIO(buffer, use_dma);
+    } else {
+        readFrameGPIO(buffer);
+    }
+
 }
 
 
@@ -1269,13 +1384,15 @@ bool HM01B0::flexio_configure()
     }
 
     // Needs Shifter 3 (maybe 7 would work as well?)
-    _fshifter = 3;
-    if (!_pflex->claimShifter(_fshifter)) {
-        Serial.printf("HM01B0 Flex IO: Could not claim Shifter %u\n", _fshifter);
-        return false;
+    // Needs Shifter 3 (maybe 7 would work as well?)
+    if (_pflex->claimShifter(3)) _fshifter = 3;
+    else if (_pflex->claimShifter(7)) _fshifter = 7;
+    else {
+      Serial.printf("HM01B0 Flex IO: Could not claim Shifter 3 or 7\n");
+      return false;
     }
-    _fshifter_mask = 1 << _fshifter;
-    _dma_source = _pflex->shiftersDMAChannel(_fshifter);
+    _fshifter_mask = 1 << _fshifter;   // 4 channels.
+    _dma_source = _pflex->shiftersDMAChannel(_fshifter); // looks like they use 
     
     // Now request one timer
     uint8_t _ftimer = _pflex->requestTimers(); // request 1 timer. 
@@ -1358,9 +1475,10 @@ bool HM01B0::flexio_configure()
         //  PINSEL: which pin is used by the Timer input or output
         //  PINPOL: 0 = active high, 1 = active low
         //  TIMOD: mode, 0 = disable, 1 = 8 bit baud rate, 2 = 8 bit PWM, 3 = 16 bit
+        //#define FLEXIO_TIMER_TRIGGER_SEL_PININPUT(x) ((uint32_t)(x) << 1U)
         _pflexio->TIMCTL[_ftimer] = FLEXIO_TIMCTL_TIMOD(3)
             | FLEXIO_TIMCTL_PINSEL(tpclk_pin) // "Pin" is 16 = PCLK
-            | FLEXIO_TIMCTL_TRGSEL(4 * (thsync_pin/2)) // "Trigger" is 12 = HSYNC
+            | FLEXIO_TIMCTL_TRGSEL(FLEXIO_TIMER_TRIGGER_SEL_PININPUT(thsync_pin)) // "Trigger" is 12 = HSYNC
             | FLEXIO_TIMCTL_TRGSRC;
     }
 
@@ -1392,7 +1510,7 @@ bool HM01B0::flexio_configure()
         //  TIMOD: mode, 0 = disable, 1 = 8 bit baud rate, 2 = 8 bit PWM, 3 = 16 bit
         _pflexio->TIMCTL[_ftimer] = FLEXIO_TIMCTL_TIMOD(3)
             | FLEXIO_TIMCTL_PINSEL(tpclk_pin) // "Pin" is 16 = PCLK
-            | FLEXIO_TIMCTL_TRGSEL(2 * (thsync_pin)) // "Trigger" is 12 = HSYNC
+            | FLEXIO_TIMCTL_TRGSEL(FLEXIO_TIMER_TRIGGER_SEL_PININPUT(thsync_pin)) // "Trigger" is 12 = HSYNC
             | FLEXIO_TIMCTL_TRGSRC;
     }
 
@@ -1476,7 +1594,8 @@ void HM01B0::readFrameFlexIO(void* buffer)
 #ifndef FLEXIO_USE_DMA
     // read FlexIO by polling
     uint32_t *p = (uint32_t *)buffer;
-    uint32_t *p_end = (uint32_t *)buffer + _width*_height/4;
+    //uint32_t *p_end = (uint32_t *)buffer + _width*_height/4; ???
+    uint32_t *p_end = (uint32_t *)buffer + _width*_height/8;
 
     while (p < p_end) {
         while ((_pflexio->SHIFTSTAT & _fshifter_mask) == 0) {

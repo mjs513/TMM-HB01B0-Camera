@@ -119,7 +119,7 @@ class HM01B0
 		uint8_t g0, uint8_t g1,uint8_t g2, uint8_t g3,
 		uint8_t g4=0xff, uint8_t g5=0xff,uint8_t g6=0xff,uint8_t g7=0xff, TwoWire &wire=Wire);
 
-	int init();
+	bool begin(bool use_gpio = false);
 	int reset();
 	void showRegisters(void);
 	int set_pixformat( pixformat_t pfmt);
@@ -204,6 +204,9 @@ class HM01B0
 	const volatile uint32_t *_pclkPort;
 	
 	uint32_t OMV_XCLK_FREQUENCY	= 6000000;
+    
+    bool _use_gpio = false;
+
 
 	// DMA STUFF
 	enum {DMABUFFER_SIZE=1296};  // 640x480  so 640*2*2
