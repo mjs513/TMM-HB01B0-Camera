@@ -1194,7 +1194,7 @@ bool HM01B0::begin(bool use_gpio)
 void HM01B0::readFrame(void* buffer){
 	set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
     if(!_use_gpio) {
-        readFrameFlexIO(buffer, use_dma);
+        readFrameFlexIO(buffer);
     } else {
         readFrameGPIO(buffer);
     }
