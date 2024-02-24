@@ -2,8 +2,14 @@
 #include <SD.h>
 #include <SPI.h>
 
-#include "HM01B0.h"
-#include "HM01B0_regs.h"
+#define CAMERA_HM0360
+#if defined(CAMERA_HM0360)
+#define use_hm0360
+#elif defined(CAMERA_HM01B0)
+#define use_hm01b0
+#endif
+#include "HIMAX.h"
+
 
 #define MCP(m) (uint16_t)(((m & 0xF8) << 8) | ((m & 0xFC) << 3) | (m >> 3))
 
@@ -37,38 +43,44 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
 };
 
 
-#define _hmConfig 2 // select mode string below
+#define _hmConfig 2  // select mode string below
 
 PROGMEM const char hmConfig[][48] = {
- "HM01B0_SPARKFUN_ML_CARRIER",
- "HM01B0_PJRC_CARRIER",
- "HM01B0_FLEXIO_CUSTOM_LIKE_8_BIT",
- "HM01B0_FLEXIO_CUSTOM_LIKE_4_BIT"
+ "HIMAX_SPARKFUN_ML_CARRIER",
+ "HIMAX_PJRC_CARRIER",
+ "HIMAX_FLEXIO_CUSTOM_LIKE_8_BIT",
+ "HIMAX_FLEXIO_CUSTOM_LIKE_4_BIT"
 };
+
 #if _hmConfig ==0
-HM01B0 hm01b0(HM01B0_SPARKFUN_ML_CARRIER);
+HIMAX himax(HIMAX_SPARKFUN_ML_CARRIER);
 #elif _hmConfig == 1
-HM01B0 hm01b0(HM01B0_PJRC_CARRIER);
+HIMAX himax(HIMAX_PJRC_CARRIER);
 #elif _hmConfig == 2
 // We are doing manual settings: 
 // this one should duplicate the 8 bit ML Carrier:
-//    HM01B0(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hsync_pin, en_pin,
+//    himax(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hsync_pin, en_pin,
 //    uint8_t g0, uint8_t g1,uint8_t g2, uint8_t g3,
 //    uint8_t g4=0xff, uint8_t g5=0xff,uint8_t g6=0xff,uint8_t g7=0xff, TwoWire &wire=Wire);
-//HM01B0 hm01b0(7, 8, 33, 32, 2, 40, 41, 42, 43, 44, 45, 6, 9);
-HM01B0 hm01b0(7, 8, 33, 32, 2, 40, 41, 42, 43, 44, 45, 6, 9);
+//himax himax(7, 8, 33, 32, 2, 40, 41, 42, 43, 44, 45, 6, 9);
+HIMAX himax(7, 8, 33, 32, 17, 40, 41, 42, 43, 44, 45, 6, 9); //Miromod board
+//HIMAX himax(7, 8, 21, 46, 17, 40, 41, 42, 43, 44, 45, 6, 9);  //SDRAM Experimental Board
 
 #elif _hmConfig == 3
 // We are doing manual settings: 
 // this one should duplicate the 8 bit ML Carrier:
-//    HM01B0(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hsync_pin, en_pin,
+//    himax(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hsync_pin, en_pin,
 //    uint8_t g0, uint8_t g1,uint8_t g2, uint8_t g3,
 //    uint8_t g4=0xff, uint8_t g5=0xff,uint8_t g6=0xff,uint8_t g7=0xff, TwoWire &wire=Wire);
-HM01B0 hm01b0(7, 8, 33, 32, 2, 40, 41, 42, 43);
+HIMAX himax(7, 8, 33, 32, 17, 40, 41, 42, 43);
+//HIMAX himax(7, 8, 21, 46, 17, 40, 41, 42, 43);
+
 #endif
 
 //#define USE_SPARKFUN 1
+//#define USE_ARDUCAM
 //#define USE_SDCARD 1
+
 File file;
 
 #define MMOD_ML 3
@@ -77,11 +89,16 @@ File file;
 #define TFT_CS  4   // "CS" on left side of Sparkfun ML Carrier
 #define TFT_RST 0  // "RX1" on left side of Sparkfun ML Carrier
 #elif MMOD_ML == 2
-#define TFT_CS 10  // AD_B0_02
-#define TFT_DC 25  // AD_B0_03
-#define TFT_RST 24
+#define TFT_DC  0  
+#define TFT_CS  10
+#define TFT_RST 1  
+#elif MMOD_ML == 3
+#define TFT_DC 0   // "TX1" on left side of Sparkfun ML Carrier
+#define TFT_CS 4   // "CS" on left side of Sparkfun ML Carrier
+#define TFT_RST 1  // "RX1" on left side of Sparkfun ML Carrier
+
 #else // PJRC_BREAKOUT
-#define TFT_DC  9
+#define TFT_DC  0  //need to change from default of pin 9 conflicts in 8bit mode
 #define TFT_CS  10
 #define TFT_RST 255  // none
 #endif
@@ -110,9 +127,9 @@ ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST);
 #endif
 
 uint16_t FRAME_WIDTH, FRAME_HEIGHT;
-uint8_t frameBuffer[(324) * 244];
+DMAMEM uint8_t frameBuffer[(324) * 244] __attribute__((aligned(32)));
 uint8_t sendImageBuf[(324) * 244 * 2];
-uint8_t frameBuffer2[(324) * 244] DMAMEM;
+DMAMEM uint8_t frameBuffer2[(324) * 244] __attribute__((aligned(32)));
 
 bool g_continuous_flex_mode = false;
 void * volatile g_new_flexio_data = nullptr;
@@ -135,7 +152,7 @@ void setup()
     }
 
 #ifdef TFT_ILI9341
-  tft.begin();
+  tft.begin(16000000);
 #else
   tft.init(240, 320);           // Init ST7789 320x240
 #endif
@@ -175,23 +192,32 @@ void setup()
 
 
   while (!Serial) ;
-  Serial.println("HM01B0 Camera Test");
+  Serial.println("himax Camera Test");
   Serial.println( hmConfig[_hmConfig] );
   Serial.println("------------------");
 
-  //hm01b0.init();
   delay(500);
 
   tft.fillScreen(TFT_BLACK);
+  
+  uint8_t status;
+  status = himax.begin();
 
-  hm01b0.begin();
+  if(!status) {
+    Serial.println("Camera failed to start!!!!");
+    while(1){}
+  }
 
   uint16_t ModelID;
-  ModelID = hm01b0.get_modelid();
+  ModelID = himax.get_modelid();
+  #if defined(use_hm01b0)
   if (ModelID == 0x01B0) {
+  #else
+  if (ModelID == 0x0360) {
+  #endif
     Serial.printf("SENSOR DETECTED :-) MODEL HM0%X\n", ModelID);
   } else {
-    Serial.println("SENSOR NOT DETECTED! :-(");
+    Serial.printf("SENSOR NOT DETECTED! :-( MODEL HM0%X\n", ModelID);
     while (1) {}
   }
 
@@ -202,23 +228,40 @@ void setup()
    * FRAMESIZE_QVGA,     // 320x240
    * FRAMESIZE_320X320,  // 320x320
    */
-  uint8_t status;
+
+#if defined(CAMERA_HM01B0)
 #if defined(USE_SPARKFUN)
-  status = hm01b0.loadSettings(LOAD_SHM01B0INIT_REGS);  //hangs the TMM.
+  status = himax.loadSettings(LOAD_ShimaxINIT_REGS);  //hangs the TMM.
+#elif defined(USE_ARDUCAM)
+  status = himax.loadSettings(LOAD_ARDUCAM_REGS);
 #else
-  status = hm01b0.loadSettings(LOAD_DEFAULT_REGS);
+  status = himax.loadSettings(LOAD_DEFAULT_REGS);
 #endif
 
   if(_hmConfig == 1 || _hmConfig == 3){
-    status = hm01b0.set_framesize(FRAMESIZE_QVGA4BIT);
+    status = himax.set_framesize(FRAMESIZE_QVGA4BIT);
   } else {
-    status = hm01b0.set_framesize(FRAMESIZE_QVGA);
+    status = himax.set_framesize(FRAMESIZE_QVGA);
   }
   if (status != 0) {
     Serial.println("Settings failed to load");
     while (1) {}
   }
-  hm01b0.set_framerate(30);  //15, 30, 60, 120
+#elif defined(CAMERA_HM0360)
+    status = himax.loadSettings(LOAD_DEFAULT_REGS);
+    if (status != 0) {
+      Serial.println("Default Settings failed to load");
+      while (1) {}
+    }
+    status = 0;
+    status = himax.set_framesize(FRAMESIZE_QVGA);
+    if (status != 0) {
+      Serial.println("Framesize Settings failed to load");
+      while (1) {}
+    }
+  #endif
+
+  himax.set_framerate(15);  //15, 30, 60, 120
 
   /* Gain Ceilling
    * GAINCEILING_1X
@@ -226,28 +269,28 @@ void setup()
    * GAINCEILING_8X
    * GAINCEILING_16X
    */
-  hm01b0.set_gainceiling(GAINCEILING_2X);
+  himax.set_gainceiling(GAINCEILING_2X);
   /* Brightness
    *  Can be 1, 2, or 3
    */
-  hm01b0.set_brightness(3);
-  hm01b0.set_autoExposure(true, 1500);  //higher the setting the less saturaturation of whiteness
-  hm01b0.cmdUpdate();  //only need after changing auto exposure settings
+  himax.set_brightness(3);
+  himax.set_autoExposure(true, 1500);  //higher the setting the less saturaturation of whiteness
+  himax.cmdUpdate();  //only need after changing auto exposure settings
 
-  hm01b0.set_mode(HIMAX_MODE_STREAMING, 0); // turn on, continuous streaming mode
+  himax.set_mode(HIMAX_MODE_STREAMING, 0); // turn on, continuous streaming mode
 
-  FRAME_HEIGHT = hm01b0.height();
-  FRAME_WIDTH  = hm01b0.width();
+  FRAME_HEIGHT = himax.height();
+  FRAME_WIDTH  = himax.width();
   Serial.printf("ImageSize (w,h): %d, %d\n", FRAME_WIDTH, FRAME_HEIGHT);
 
   // Lets setup camera interrupt priorities:
-  //hm01b0.setVSyncISRPriority(102); // higher priority than default
-  hm01b0.setDMACompleteISRPriority(192); // lower than default
+  //himax.setVSyncISRPriority(102); // higher priority than default
+  himax.setDMACompleteISRPriority(192); // lower than default
 
   showCommandList();
 }
 
-bool hm01b0_flexio_callback(void *pfb)
+bool himax_flexio_callback(void *pfb)
 {
   //Serial.println("Flexio callback");
   g_new_flexio_data = pfb;
@@ -259,7 +302,7 @@ bool hm01b0_flexio_callback(void *pfb)
 
 uint8_t *pfb_last_frame_returned = nullptr;
 
-bool hm01b0_flexio_callback_video(void *pfb)
+bool himax_flexio_callback_video(void *pfb)
 {
   pfb_last_frame_returned = (uint8_t*)pfb;
 #ifdef UPDATE_ON_CAMERA_FRAMES
@@ -315,7 +358,7 @@ void loop()
   #if defined(USB_DUAL_SERIAL) || defined(USB_TRIPLE_SERIAL)
         uint16_t pixel;
         memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-        hm01b0.readFrame(frameBuffer);
+        himax.readFrame(frameBuffer);
         uint32_t idx = 0;
         for (int i = 0; i < FRAME_HEIGHT * FRAME_WIDTH; i++) {
           idx = i * 2;
@@ -343,8 +386,8 @@ void loop()
   #if defined(USE_SDCARD)
         calAE();
         memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-        hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-        hm01b0.readFrame(frameBuffer);
+        himax.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
+        himax.readFrame(frameBuffer);
         save_image_SD();
         ch = ' '; 
   #endif
@@ -357,35 +400,35 @@ void loop()
         tft.fillScreen(TFT_BLACK);
         //calAE();
         Serial.println("Reading frame");
-        Serial.printf("Buffer: %p halfway: %p end:%p\n", frameBuffer, &frameBuffer[hm01b0.width()*hm01b0.height() / 2], &frameBuffer[hm01b0.width()*hm01b0.height()]);
+        Serial.printf("Buffer: %p halfway: %p end:%p\n", frameBuffer, &frameBuffer[himax.width()*himax.height() / 2], &frameBuffer[himax.width()*himax.height()]);
         memset((uint8_t *)frameBuffer, 0, sizeof(frameBuffer));
-        hm01b0.readFrame(frameBuffer);
+        himax.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
+        himax.readFrame(frameBuffer);
         Serial.println("Finished reading frame"); Serial.flush();
 
-        for (volatile uint8_t *pfb = frameBuffer; pfb < (frameBuffer + 4 * hm01b0.width()); pfb += hm01b0.width()) {
+        for (volatile uint8_t *pfb = frameBuffer; pfb < (frameBuffer + 4 * himax.width()); pfb += himax.width()) {
           Serial.printf("\n%08x: ", (uint32_t)pfb);
           for (uint16_t i = 0; i < 8; i++) Serial.printf("%02x ", pfb[i]);
           Serial.print("..");
           Serial.print("..");
-          for (uint16_t i = hm01b0.width() - 8; i < hm01b0.width(); i++) Serial.printf("%04x ", pfb[i]);
+          for (uint16_t i = himax.width() - 8; i < himax.width(); i++) Serial.printf("%04x ", pfb[i]);
         }
         Serial.println("\n");
 
           // Lets dump out some of center of image.
           Serial.println("Show Center pixels\n");
-          for (volatile uint8_t *pfb = frameBuffer + hm01b0.width() * ((hm01b0.height() / 2) - 8); pfb < (frameBuffer + hm01b0.width() * (hm01b0.height() / 2 + 8)); pfb += hm01b0.width()) {
+          for (volatile uint8_t *pfb = frameBuffer + himax.width() * ((himax.height() / 2) - 8); pfb < (frameBuffer + himax.width() * (himax.height() / 2 + 8)); pfb += himax.width()) {
             Serial.printf("\n%08x: ", (uint32_t)pfb);
             for (uint16_t i = 0; i < 8; i++) Serial.printf("%02x ", pfb[i]);
             Serial.print("..");
-            for (uint16_t i = (hm01b0.width() / 2) - 4; i < (hm01b0.width() / 2) + 4; i++) Serial.printf("%02x ", pfb[i]);
+            for (uint16_t i = (himax.width() / 2) - 4; i < (himax.width() / 2) + 4; i++) Serial.printf("%02x ", pfb[i]);
             Serial.print("..");
-            for (uint16_t i = hm01b0.width() - 8; i < hm01b0.width(); i++) Serial.printf("%02x ", pfb[i]);
+            for (uint16_t i = himax.width() - 8; i < himax.width(); i++) Serial.printf("%02x ", pfb[i]);
           }
           Serial.println("\n...");
 
-          //int numPixels = hm01b0.width() * hm01b0.height();
-          Serial.printf("TFT(%u, %u) Camera(%u, %u)\n", tft.width(), tft.height(), hm01b0.width(), hm01b0.height());
-          //int camera_width = Camera.width();
+          int numPixels = himax.width() * himax.height();
+          Serial.printf("TFT(%u, %u) Camera(%u, %u)\n", tft.width(), tft.height(), himax.width(), himax.height());
 
         tft.setOrigin(-2, -2);
         tft.writeRect8BPP(0, 0, FRAME_WIDTH, FRAME_HEIGHT, frameBuffer, mono_palette);
@@ -397,7 +440,7 @@ void loop()
       case 'F':
       {
         if (!g_continuous_flex_mode) {
-          if (hm01b0.readContinuous(&hm01b0_flexio_callback, frameBuffer, frameBuffer2)) {
+          if (himax.readContinuous(&himax_flexio_callback, frameBuffer, frameBuffer2)) {
             Serial.println("* continuous mode started");
             g_flexio_capture_count = 0;
             g_flexio_redraw_count = 0;
@@ -406,7 +449,7 @@ void loop()
             Serial.println("* error, could not start continuous mode");
           }
         } else {
-          hm01b0.stopReadContinuous();
+          himax.stopReadContinuous();
           g_continuous_flex_mode = false;
           Serial.println("* continuous mode stopped");
         }
@@ -415,7 +458,7 @@ void loop()
       case 'V':
       {
         if (!g_continuous_flex_mode) {
-          if (hm01b0.readContinuous(&hm01b0_flexio_callback_video, frameBuffer, frameBuffer2)) {
+          if (himax.readContinuous(&himax_flexio_callback_video, frameBuffer, frameBuffer2)) {
 
             Serial.println("Before Set frame complete CB");
             if (!tft.useFrameBuffer(true)) Serial.println("Failed call to useFrameBuffer");
@@ -430,7 +473,7 @@ void loop()
             Serial.println("* error, could not start continuous mode");
           }
         } else {
-          hm01b0.stopReadContinuous();
+          himax.stopReadContinuous();
           tft.endUpdateAsync();
           g_continuous_flex_mode = 0;
           Serial.println("* continuous mode stopped");
@@ -494,10 +537,10 @@ uint16_t color565(uint8_t r, uint8_t g, uint8_t b) {
 void send_image( Stream *imgSerial) {
   uint32_t imagesize;
   imagesize = (320 * 240 * 2);
-  hm01b0.set_vflip(true);
+  himax.set_vflip(true);
   memset(frameBuffer, 0, sizeof(frameBuffer));
-  hm01b0.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
-  hm01b0.readFrame(frameBuffer);
+  himax.set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
+  himax.readFrame(frameBuffer);
   
   uint32_t image_idx = 0;
   uint32_t frame_idx = 0;
@@ -634,10 +677,10 @@ void calAE() {
   // Calibrate Autoexposure
   Serial.println("Calibrating Auto Exposure...");
   memset((uint8_t*)frameBuffer, 0, sizeof(frameBuffer));
-  if (hm01b0.cal_ae(10, frameBuffer, FRAME_WIDTH * FRAME_HEIGHT, &aecfg) != HM01B0_ERR_OK) {
+  if (himax.cal_ae(10, frameBuffer, FRAME_WIDTH * FRAME_HEIGHT, &aecfg) != HIMAX_ERR_OK) {
     Serial.println("\tnot converged");
   } else {
     Serial.println("\tconverged!");
-    hm01b0.cmdUpdate();
+    himax.cmdUpdate();
   }
 }

@@ -41,9 +41,19 @@ SOFTWARE.
 #include <Wire.h>
 #include <FlexIO_t4.h>
 
+
+#include "himax_regs.h"
+#include "himax_reg_vals.h"
+
+
 //Do not touch this define
 #define SensorMonochrome 1
 
+enum
+{
+  CAMERA_HM01B0 = 0,
+  CAMERA_HM0360
+};
 
 typedef enum {
     PIXFORMAT_INVALID = 0,
@@ -58,9 +68,11 @@ typedef enum {
     FRAMESIZE_QVGA,     // 320x240
 	FRAMESIZE_320X320,  // 320x320
 	FRAMESIZE_QVGA4BIT,
+    FRAMESIZE_VGA,      // 640x480
 } framesize_t;
 
 typedef enum {
+    GAINCEILING_1X,
     GAINCEILING_2X,
     GAINCEILING_4X,
     GAINCEILING_8X,
@@ -68,20 +80,13 @@ typedef enum {
 } gainceiling_t;
 
 typedef enum {
-	LOAD_DEFAULT_REGS,
-	LOAD_WALKING1S_REG,
-	LOAD_SHM01B0INIT_REGS,
-} camera_reg_settings_t;
-
-
-typedef enum {
-	HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT = 0,
-	HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT,
+	HIMAX_TEENSY_MICROMOD_FLEXIO_8BIT = 0,
+	HIMAX_TEENSY_MICROMOD_FLEXIO_4BIT,
 } hw_config_t;
 
 typedef enum {
-	HM01B0_SPARKFUN_ML_CARRIER = 0,
-	HM01B0_PJRC_CARRIER,
+	HIMAX_SPARKFUN_ML_CARRIER = 0,
+	HIMAX_PJRC_CARRIER,
 } hw_carrier_t;
 
 typedef struct
@@ -104,18 +109,18 @@ typedef struct
 
 
 typedef enum {
-    HM01B0_ERR_OK               = 0x00,
-    HM01B0_ERR_AE_NOT_CONVERGED,
-    HM01B0_ERR_PARAMS,
-    HM01B0_NUM_ERR
+    HIMAX_ERR_OK               = 0x00,
+    HIMAX_ERR_AE_NOT_CONVERGED,
+    HIMAX_ERR_PARAMS,
+    HIMAX_NUM_ERR
 } status_e;
 
 	
-class HM01B0
+class HIMAX
 {
   public:
-    HM01B0(hw_carrier_t set_hw_carrier);
-    HM01B0(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hsync_pin, uint8_t en_pin,
+    HIMAX(hw_carrier_t set_hw_carrier);
+    HIMAX(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hsync_pin, uint8_t en_pin,
 		uint8_t g0, uint8_t g1,uint8_t g2, uint8_t g3,
 		uint8_t g4=0xff, uint8_t g5=0xff,uint8_t g6=0xff,uint8_t g7=0xff, TwoWire &wire=Wire);
 
@@ -203,7 +208,7 @@ class HM01B0
 	const volatile uint32_t *_hrefPort;
 	const volatile uint32_t *_pclkPort;
 	
-	uint32_t OMV_XCLK_FREQUENCY	= 6000000;
+	uint32_t OMV_XCLK_FREQUENCY	= 12000000;
     
     bool _use_gpio = false;
 
@@ -220,7 +225,8 @@ class HM01B0
 	uint8_t *_dma_last_completed_frame;
 	// TBD Allow user to set all of the buffers...
 
-
+    uint8_t _camera_name;
+    
 	DMAChannel dma_flexio;
 
 	// Added settings for configurable flexio
@@ -230,8 +236,6 @@ class HM01B0
 	uint8_t _fshifter_mask;
     uint8_t _ftimer;
     uint8_t _dma_source;
-
-
 
 	#if defined (ARDUINO_TEENSY_MICROMOD)
 	uint32_t _save_IOMUXC_GPR_GPR27;
@@ -261,7 +265,7 @@ class HM01B0
 	void processDMAInterruptFlexIO();
 	static void frameStartInterruptFlexIO();
 	void processFrameStartInterruptFlexIO();
-	static HM01B0 *active_dma_camera;
+	static HIMAX *active_dma_camera;
 	
 	//OpenMV support functions:
 	
@@ -332,11 +336,11 @@ class HM01B0
 };
 //Rest is TBD.
 
-#endif // __HM01B0_H__
+#endif // __HIMAX_H__
 
 /*  
 Teensy MicroMod pinouts - 8bit
-HM01B0 pin      pin#    NXP     Usage
+HIMAX pin      pin#    NXP     Usage
 ----------      ----    ---     -----
 FVLD/VSYNC      33      EMC_07  GPIO
 LVLD/HSYNC      32      B0_12   FlexIO2:12

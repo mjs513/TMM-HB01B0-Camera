@@ -33,513 +33,24 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#include "HM01B0.h"
-#include "HM01B0_regs.h"
+#include "HIMAX.h"
 
 #include <Wire.h>
+#define use_hm0360
 
-#define HIMAX_BOOT_RETRY            (10)
-#define HIMAX_LINE_LEN_PCK_FULL     0x178
-#define HIMAX_FRAME_LENGTH_FULL     0x109
-
-#define HIMAX_LINE_LEN_PCK_QVGA     0x178
-#define HIMAX_FRAME_LENGTH_QVGA     0x104
-
-#define HIMAX_LINE_LEN_PCK_QQVGA    0x178
-#define HIMAX_FRAME_LENGTH_QQVGA    0x084
-
-//#define DEBUG_CAMERA
-//#define DEBUG_CAMERA_VERBOSE
-//#define DEBUG_FLEXIO
+#define DEBUG_CAMERA
+#define DEBUG_CAMERA_VERBOSE
+#define DEBUG_FLEXIO
 
 #define FLEXIO_TIMER_TRIGGER_SEL_PININPUT(x) ((uint32_t)(x) << 1U)
 
-const uint16_t default_regs[][2] = {
-    {BLC_TGT,              0x08},          //  BLC target :8  at 8 bit mode
-    {BLC2_TGT,             0x08},          //  BLI target :8  at 8 bit mode
-    {0x3044,               0x0A},          //  Increase CDS time for settling
-    {0x3045,               0x00},          //  Make symetric for cds_tg and rst_tg
-    {0x3047,               0x0A},          //  Increase CDS time for settling
-    {0x3050,               0xC0},          //  Make negative offset up to 4x
-    {0x3051,               0x42},
-    {0x3052,               0x50},
-    {0x3053,               0x00},
-    {0x3054,               0x03},          //  tuning sf sig clamping as lowest
-    {0x3055,               0xF7},          //  tuning dsun
-    {0x3056,               0xF8},          //  increase adc nonoverlap clk
-    {0x3057,               0x29},          //  increase adc pwr for missing code
-    {0x3058,               0x1F},          //  turn on dsun
-    {0x3059,               0x1E},
-    {0x3064,               0x00},
-    {0x3065,               0x04},          //  pad pull 0
-    {ANA_Register_17,      0x00},          //  Disable internal oscillator
-   
-    {BLC_CFG,              0x43},          //  BLC_on, IIR
-   
-    {0x1001,               0x43},          //  BLC dithering en
-    {0x1002,               0x43},          //  blc_darkpixel_thd
-    {0x0350,               0x7F},          //  Dgain Control
-    {BLI_EN,               0x01},          //  BLI enable
-    {0x1003,               0x00},          //  BLI Target [Def: 0x20]
-   
-    {DPC_CTRL,             0x01},          //  DPC option 0: DPC off   1 : mono   3 : bayer1   5 : bayer2
-    {0x1009,               0xA0},          //  cluster hot pixel th
-    {0x100A,               0x60},          //  cluster cold pixel th
-    {SINGLE_THR_HOT,       0x90},          //  single hot pixel th
-    {SINGLE_THR_COLD,      0x40},          //  single cold pixel th
-    {0x1012,               0x00},          //  Sync. shift disable
-    {STATISTIC_CTRL,       0x07},          //  AE stat en | MD LROI stat en | magic
-    {0x2003,               0x00},
-    {0x2004,               0x1C},
-    {0x2007,               0x00},
-    {0x2008,               0x58},
-    {0x200B,               0x00},
-    {0x200C,               0x7A},
-    {0x200F,               0x00},
-    {0x2010,               0xB8},
-    {0x2013,               0x00},
-    {0x2014,               0x58},
-    {0x2017,               0x00},
-    {0x2018,               0x9B},
-   
-    {AE_CTRL,              0x01},          //Automatic Exposure
-    {AE_TARGET_MEAN,       0x64},          //AE target mean          [Def: 0x3C]
-    {AE_MIN_MEAN,          0x0A},          //AE min target mean      [Def: 0x0A]
-    {CONVERGE_IN_TH,       0x03},          //Converge in threshold   [Def: 0x03]
-    {CONVERGE_OUT_TH,      0x05},          //Converge out threshold  [Def: 0x05]
-    {MAX_INTG_H,           (HIMAX_FRAME_LENGTH_QVGA-2)>>8},          //Maximum INTG High Byte  [Def: 0x01]
-    {MAX_INTG_L,           (HIMAX_FRAME_LENGTH_QVGA-2)&0xFF},        //Maximum INTG Low Byte   [Def: 0x54]
-    {MAX_AGAIN_FULL,       0x04},          //Maximum Analog gain in full frame mode [Def: 0x03]
-    {MAX_AGAIN_BIN2,       0x04},          //Maximum Analog gain in bin2 mode       [Def: 0x04]
-    {MAX_DGAIN,            0xC0},
-   
-    {INTEGRATION_H,        0x01},          //Integration H           [Def: 0x01]
-    {INTEGRATION_L,        0x08},          //Integration L           [Def: 0x08]
-    {ANALOG_GAIN,          0x00},          //Analog Global Gain      [Def: 0x00]
-    {DAMPING_FACTOR,       0x20},          //Damping Factor          [Def: 0x20]
-    {DIGITAL_GAIN_H,       0x01},          //Digital Gain High       [Def: 0x01]
-    {DIGITAL_GAIN_L,       0x00},          //Digital Gain Low        [Def: 0x00]
-   
-    {FS_CTRL,              0x00},          //Flicker Control
-   
-    {FS_60HZ_H,            0x00},
-    {FS_60HZ_L,            0x85},
-    {FS_50HZ_H,            0x00},
-    {FS_50HZ_L,            0xa0},
-
-    {MD_CTRL,              0x00},
-    {FRAME_LEN_LINES_H,    HIMAX_FRAME_LENGTH_QVGA>>8},
-    {FRAME_LEN_LINES_L,    HIMAX_FRAME_LENGTH_QVGA&0xFF},
-    {LINE_LEN_PCK_H,       HIMAX_LINE_LEN_PCK_QVGA>>8},
-    {LINE_LEN_PCK_L,       HIMAX_LINE_LEN_PCK_QVGA&0xFF},
-    {QVGA_WIN_EN,          0x01},          // Enable QVGA window readout
-    {0x0383,               0x01},
-    {0x0387,               0x01},
-    {0x0390,               0x00},
-    {0x3011,               0x70},
-    {0x3059,               0x02},
-    {OSC_CLK_DIV,          0x0B},
-    {IMG_ORIENTATION,      0x00},          // change the orientation
-    {0x0104,               0x01},
-
-    //============= End of regs marker ==================
-    {0x0000,            0x00},
-};
-
-const uint16_t Walking1s_reg[][2] =
-{
-    {0x2100, 0x00},    //W 24 2100 00 2 1 ; AE
-    {0x1000, 0x00},    //W 24 1000 00 2 1 ; BLC
-    {0x1008, 0x00},    //W 24 1008 00 2 1 ; DPC
-    {0x0205, 0x00},    //W 24 0205 00 2 1 ; AGain
-    {0x020E, 0x01},    //W 24 020E 01 2 1 ; DGain
-    {0x020F, 0x00},    //W 24 020F 00 2 1 ; DGain
-    {0x0601, 0x11},    //W 24 0601 11 2 1 ; Test pattern
-    {0x0104, 0x01},    //W 24 0104 01 2 1 ;
-    //============= End of regs marker ==================
-    {0x0000,            0x00},	
-};
-
-
-const uint16_t FULL_regs[][2] = {
-    {0x0383,                0x01},
-    {0x0387,                0x01},
-    {0x0390,                0x00},
-    {QVGA_WIN_EN,           0x00},// Disable QVGA window readout
-    {MAX_INTG_H,            (HIMAX_FRAME_LENGTH_FULL-2)>>8},
-    {MAX_INTG_L,            (HIMAX_FRAME_LENGTH_FULL-2)&0xFF},
-    {FRAME_LEN_LINES_H,     (HIMAX_FRAME_LENGTH_FULL>>8)},
-    {FRAME_LEN_LINES_L,     (HIMAX_FRAME_LENGTH_FULL&0xFF)},
-    {LINE_LEN_PCK_H,        (HIMAX_LINE_LEN_PCK_FULL>>8)},
-    {LINE_LEN_PCK_L,        (HIMAX_LINE_LEN_PCK_FULL&0xFF)},
-    {GRP_PARAM_HOLD,        0x01},
-    //============= End of regs marker ==================
-    {0x0000,            0x00},
-
-};
-
-const uint16_t QVGA_regs[][2] = {
-    {0x0383,                0x01},
-    {0x0387,                0x01},
-    {0x0390,                0x00},
-    {QVGA_WIN_EN,           0x01},// Enable QVGA window readout
-    {MAX_INTG_H,            (HIMAX_FRAME_LENGTH_QVGA-2)>>8},
-    {MAX_INTG_L,            (HIMAX_FRAME_LENGTH_QVGA-2)&0xFF},
-    {FRAME_LEN_LINES_H,     (HIMAX_FRAME_LENGTH_QVGA>>8)},
-    {FRAME_LEN_LINES_L,     (HIMAX_FRAME_LENGTH_QVGA&0xFF)},
-    {LINE_LEN_PCK_H,        (HIMAX_LINE_LEN_PCK_QVGA>>8)},
-    {LINE_LEN_PCK_L,        (HIMAX_LINE_LEN_PCK_QVGA&0xFF)},
-	{BIT_CONTROL,			0x02},
-    {GRP_PARAM_HOLD,        0x01},
-    //============= End of regs marker ==================
-    {0x0000,            0x00},
-
-};
-
-const uint16_t QQVGA_regs[][2] = {
-    {0x0383,                0x03},
-    {0x0387,                0x03},
-    {0x0390,                0x03},
-    {QVGA_WIN_EN,           0x01},// Enable QVGA window readout
-    {MAX_INTG_H,            (HIMAX_FRAME_LENGTH_QQVGA-2)>>8},
-    {MAX_INTG_L,            (HIMAX_FRAME_LENGTH_QQVGA-2)&0xFF},
-    {FRAME_LEN_LINES_H,     (HIMAX_FRAME_LENGTH_QQVGA>>8)},
-    {FRAME_LEN_LINES_L,     (HIMAX_FRAME_LENGTH_QQVGA&0xFF)},
-    {LINE_LEN_PCK_H,        (HIMAX_LINE_LEN_PCK_QQVGA>>8)},
-    {LINE_LEN_PCK_L,        (HIMAX_LINE_LEN_PCK_QQVGA&0xFF)},
-    {GRP_PARAM_HOLD,        0x01},
-    //============= End of regs marker ==================
-    {0x0000,            0x00},
-};
-
-const uint16_t sHM01B0Init_regs[][2] = 
-{
-// ;*************************************************************************
-// ; Sensor: HM01B0
-// ; I2C ID: 24
-// ; Resolution: 324x244
-// ; Lens:
-// ; Flicker:
-// ; Frequency:
-// ; Description: AE control enable
-// ; 8-bit mode, LSB first
-// ;
-// ;
-// ; Note:
-// ;
-// ; $Revision: 1338 $
-// ; $Date:: 2017-04-11 15:43:45 +0800#$
-// ;*************************************************************************
-// 
-// // ---------------------------------------------------
-// // HUB system initial
-// // ---------------------------------------------------
-// W 20 8A04 01 2 1
-// W 20 8A00 22 2 1
-// W 20 8A01 00 2 1
-// W 20 8A02 01 2 1
-// W 20 0035 93 2 1 ; [3]&[1] hub616 20bits in, [5:4]=1 mclk=48/2=24mhz
-// W 20 0036 00 2 1
-// W 20 0011 09 2 1
-// W 20 0012 B6 2 1
-// W 20 0014 08 2 1
-// W 20 0015 98 2 1
-// ;W 20 0130 16 2 1 ; 3m soc, signal buffer control
-// ;W 20 0100 44 2 1 ; [6] hub616 20bits in
-// W 20 0100 04 2 1 ; [6] hub616 20bits in
-// W 20 0121 01 2 1 ; [0] Q1 Intf enable, [1]:4bit mode, [2] msb first, [3] serial mode
-// W 20 0150 00 2 1 ;
-// W 20 0150 04 2 1 ;
-// 
-// 
-// //---------------------------------------------------
-// // Initial
-// //---------------------------------------------------
-// W 24 0103 00 2 1 ; software reset-> was 0x22
-    {0x0103, 0x00},
-// W 24 0100 00 2 1; power up
-    {0x0100, 0x00},
-// 
-// 
-// 
-// //---------------------------------------------------
-// // Analog
-// //---------------------------------------------------
-// L HM01B0_analog_setting.txt
-    {0x1003, 0x08},
-    {0x1007, 0x08},
-    {0x3044, 0x0A},
-    {0x3045, 0x00},
-    {0x3047, 0x0A},
-    {0x3050, 0xC0},
-    {0x3051, 0x42},
-    {0x3052, 0x50},
-    {0x3053, 0x00},
-    {0x3054, 0x03},
-    {0x3055, 0xF7},
-    {0x3056, 0xF8},
-    {0x3057, 0x29},
-    {0x3058, 0x1F},
-    {0x3059, 0x1E},
-    {0x3064, 0x00},
-    {0x3065, 0x04},
-// 
-// 
-// //---------------------------------------------------
-// // Digital function
-// //---------------------------------------------------
-// 
-// // BLC
-// W 24 1000 43 2 1 ; BLC_on, IIR
-    {0x1000, 0x43},
-// W 24 1001 40 2 1 ; [6] : BLC dithering en
-    {0x1001, 0x40},
-// W 24 1002 32 2 1 ; // blc_darkpixel_thd
-    {0x1002, 0x32},
-// 
-// // Dgain
-// W 24 0350 7F 2 1 ; Dgain Control
-    {0x0350, 0x7F},
-// 
-// // BLI
-// W 24 1006 01 2 1 ; [0] : bli enable
-    {0x1006, 0x01},
-// 
-// // DPC
-// W 24 1008 00 2 1 ; [2:0] : DPC option 0: DPC off 1 : mono 3 : bayer1 5 : bayer2
-    {0x1008, 0x00},
-// W 24 1009 A0 2 1 ; cluster hot pixel th
-    {0x1009, 0xA0},
-// W 24 100A 60 2 1 ; cluster cold pixel th
-    {0x100A, 0x60},
-// W 24 100B 90 2 1 ; single hot pixel th
-    {0x100B, 0x90},
-// W 24 100C 40 2 1 ; single cold pixel th
-    {0x100C, 0x40},
-// //
-// advance VSYNC by 1 row
-    {0x3022, 0x01},
-// W 24 1012 00 2 1 ; Sync. enable VSYNC shift
-    {0x1012, 0x01},
-
-// 
-// // ROI Statistic
-// W 24 2000 07 2 1 ; [0] : AE stat en [1] : MD LROI stat en [2] : MD GROI stat en [3] : RGB stat ratio en [4] : IIR selection (1 -> 16, 0 -> 8)
-    {0x2000, 0x07},
-// W 24 2003 00 2 1 ; MD GROI 0 y start HB
-    {0x2003, 0x00},
-// W 24 2004 1C 2 1 ; MD GROI 0 y start LB
-    {0x2004, 0x1C},
-// W 24 2007 00 2 1 ; MD GROI 1 y start HB
-    {0x2007, 0x00},
-// W 24 2008 58 2 1 ; MD GROI 1 y start LB
-    {0x2008, 0x58},
-// W 24 200B 00 2 1 ; MD GROI 2 y start HB
-    {0x200B, 0x00},
-// W 24 200C 7A 2 1 ; MD GROI 2 y start LB
-    {0x200C, 0x7A},
-// W 24 200F 00 2 1 ; MD GROI 3 y start HB
-    {0x200F, 0x00},
-// W 24 2010 B8 2 1 ; MD GROI 3 y start LB
-    {0x2010, 0xB8},
-// 
-// W 24 2013 00 2 1 ; MD LRIO y start HB
-    {0x2013, 0x00},
-// W 24 2014 58 2 1 ; MD LROI y start LB
-    {0x2014, 0x58},
-// W 24 2017 00 2 1 ; MD LROI y end HB
-    {0x2017, 0x00},
-// W 24 2018 9B 2 1 ; MD LROI y end LB
-    {0x2018, 0x9B},
-// 
-// // AE
-// W 24 2100 01 2 1 ; [0]: AE control enable
-    {0x2100, 0x01},
-// W 24 2104 07 2 1 ; converge out th
-    {0x2104, 0x07},
-// W 24 2105 0C 2 1 ; max INTG Hb
-    {0x2105, 0x0C},
-// W 24 2106 78 2 1 ; max INTG Lb
-    {0x2106, 0x78},
-// W 24 2108 03 2 1 ; max AGain in full
-    {0x2108, 0x03},
-// W 24 2109 03 2 1 ; max AGain in bin2
-    {0x2109, 0x03},
-// W 24 210B 80 2 1 ; max DGain
-    {0x210B, 0x80},
-// W 24 210F 00 2 1 ; FS 60Hz Hb
-    {0x210F, 0x00},
-// W 24 2110 85 2 1 ; FS 60Hz Lb
-    {0x2110, 0x85},
-// W 24 2111 00 2 1 ; Fs 50Hz Hb
-    {0x2111, 0x00},
-// W 24 2112 A0 2 1 ; FS 50Hz Lb
-    {0x2112, 0xA0},
-// 
-// 
-// // MD
-// W 24 2150 03 2 1 ; [0] : MD LROI en [1] : MD GROI en
-    {0x2150, 0x03},
-// 
-// 
-// //---------------------------------------------------
-// // frame rate : 5 FPS
-// //---------------------------------------------------
-// W 24 0340 0C 2 1 ; smia frame length Hb
-    {0x0340, 0x0C},
-// W 24 0341 7A 2 1 ; smia frame length Lb 3192
-    {0x0341, 0x7A},
-// 
-// W 24 0342 01 2 1 ; smia line length Hb
-    {0x0342, 0x01},
-// W 24 0343 77 2 1 ; smia line length Lb 375
-    {0x0343, 0x77},
-// 
-// //---------------------------------------------------
-// // Resolution : QVGA 324x244
-// //---------------------------------------------------
-// W 24 3010 01 2 1 ; [0] : window mode 0 : full frame 324x324 1 : QVGA
-    {0x3010, 0x01},
-// 
-// 
-// W 24 0383 01 2 1 ;
-    {0x0383, 0x01},
-// W 24 0387 01 2 1 ;
-    {0x0387, 0x01},
-// W 24 0390 00 2 1 ;
-    {0x0390, 0x00},
-// 
-// //---------------------------------------------------
-// // bit width Selection
-// //---------------------------------------------------
-// W 24 3011 70 2 1 ; [0] : 6 bit mode enable
-    {0x3011, 0x70},
-// 
-// 
-// W 24 3059 02 2 1 ; [7]: Self OSC En, [6]: 4bit mode, [5]: serial mode, [4:0]: keep value as 0x02
-    {0x3059, 0x02},
-// W 24 3060 01 2 1 ; [5]: gated_clock, [4]: msb first,
-    {0x3060, 0x20},
-// ; [3:2]: vt_reg_div -> div by 4/8/1/2
-// ; [1;0]: vt_sys_div -> div by 8/4/2/1
-// 
-// 
-    {0x0101, 0x01},
-// //---------------------------------------------------
-// // CMU update
-// //---------------------------------------------------
-// 
-// W 24 0104 01 2 1 ; was 0100
-    {0x0104, 0x01},
-// 
-// 
-// 
-// //---------------------------------------------------
-// // Turn on rolling shutter
-// //---------------------------------------------------
-// W 24 0100 01 2 1 ; was 0005 ; mode_select 00 : standby - wait fir I2C SW trigger 01 : streaming 03 : output "N" frame, then enter standby 04 : standby - wait for HW trigger (level), then continuous video out til HW TRIG goes off 06 : standby - wait for HW trigger (edge), then output "N" frames then enter standby
-    {0x0100, 0x00},
-// 
-// ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    //============= End of regs marker ==================
-    {0x0000,            0x00},
-};
-
-//Arducam configuration
-const uint16_t Arducam_hm01b0_324x244[][2]  = {
-    {0x0103, 0x0},
-    {0x0100,0x00},  
-    {0x1003,0x08},
-    {0x1007,0x08}, 
-    {0x3044,0x0A},     
-    {0x3045,0x00},    
-    {0x3047,0x0A},    
-    {0x3050,0xC0},    
-    {0x3051,0x42}, 
-    {0x3052,0x50},
-    {0x3053,0x00},
-    {0x3054,0x03}, 
-    {0x3055,0xF7},
-    {0x3056,0xF8},
-    {0x3057,0x29},
-    {0x3058,0x1F},
-    {0x3059,0x1E},
-    {0x3064,0x00},
-    {0x3065,0x04},
-    {0x1000,0x43},
-    {0x1001,0x40},
-    {0x1002,0x32}, 
-    {0x0350,0x7F},
-    {0x1006,0x01},
-    {0x1008,0x00},
-    {0x1009,0xA0},
-    {0x100A,0x60},
-    {0x100B,0x90},
-    {0x100C,0x40},
-    {0x3022,0x01},
-    {0x1012,0x01},
-    {0x2000,0x07},
-    {0x2003,0x00}, 
-    {0x2004,0x1C},
-    {0x2007,0x00}, 
-    {0x2008,0x58}, 
-    {0x200B,0x00}, 
-    {0x200C,0x7A}, 
-    {0x200F,0x00},
-    {0x2010,0xB8},
-    {0x2013,0x00},
-    {0x2014,0x58},
-    {0x2017,0x00},
-    {0x2018,0x9B},
-    {0x2100,0x01},
-    {0x2101,0x5F},
-    {0x2102,0x0A},
-    {0x2103,0x03},
-    {0x2104,0x05},
-    {0x2105,0x02},
-    {0x2106,0x14},
-    {0x2107,0x02},
-    {0x2108,0x03},
-    {0x2109,0x03},
-    {0x210A,0x00},
-    {0x210B,0x80},
-    {0x210C,0x40},
-    {0x210D,0x20},
-    {0x210E,0x03},
-    {0x210F,0x00},
-    {0x2110,0x85},
-    {0x2111,0x00},
-    {0x2112,0xA0},
-    {0x2150,0x03},
-    {0x0340,0x01},
-    {0x0341,0x7A},
-    {0x0342,0x01},
-    {0x0343,0x77},
-    {0x3010,0x00},  //bit[0] 1 enable QVGA
-    {0x0383,0x01},
-    {0x0387,0x01},
-    {0x0390,0x00},
-    {0x3011,0x70},
-    {0x3059,0x22},
-    {0x3060,0x30},
-    {0x0101,0x01}, 
-    {0x0104,0x01},
-    //{0x0390,0x03},  //1/4 binning
-    //{0x0383,0x03},
-    //{0x0387,0x03},
-    //{0x1012,0x03},
-    {0x0100,0x01},
-    //============= End of regs marker ==================
-    {0x0000,            0x00},
-};
-
 // Constructor
-HM01B0::HM01B0(hw_carrier_t set_hw_carrier)
+HIMAX::HIMAX(hw_carrier_t set_hw_carrier)
 {
   _wire = &Wire;
   
-  if(set_hw_carrier == HM01B0_SPARKFUN_ML_CARRIER) {
-	    _hw_config = HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT;
+  if(set_hw_carrier == HIMAX_SPARKFUN_ML_CARRIER) {
+	    _hw_config = HIMAX_TEENSY_MICROMOD_FLEXIO_8BIT;
 		VSYNC_PIN = 33;
 		PCLK_PIN = 8;
 		HSYNC_PIN = 32;
@@ -548,8 +59,8 @@ HM01B0::HM01B0(hw_carrier_t set_hw_carrier)
 		G0 = 40; G1 = 41;  G2 = 42;	G3 = 43;
 		G4 = 44; G5 = 45;  G6 = 6;
 		G7 = 9;
-  } else if(set_hw_carrier == HM01B0_PJRC_CARRIER) {
-	    _hw_config = HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT;
+  } else if(set_hw_carrier == HIMAX_PJRC_CARRIER) {
+	    _hw_config = HIMAX_TEENSY_MICROMOD_FLEXIO_4BIT;
 		VSYNC_PIN = 32;		//33
 		PCLK_PIN = 44;		//8
 		HSYNC_PIN = 45;		//32
@@ -565,7 +76,7 @@ HM01B0::HM01B0(hw_carrier_t set_hw_carrier)
 
 
 
-HM01B0::HM01B0(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hsync_pin, uint8_t en_pin,
+HIMAX::HIMAX(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hsync_pin, uint8_t en_pin,
     uint8_t g0, uint8_t g1,uint8_t g2, uint8_t g3, uint8_t g4, uint8_t g5, uint8_t g6,uint8_t g7, TwoWire &wire) : 
         MCLK_PIN(mclk_pin), PCLK_PIN(pclk_pin), VSYNC_PIN(vsync_pin), HSYNC_PIN(hsync_pin), EN_PIN(en_pin), 
         G0(g0), G1(g1), G2(g2), G3(g3), G4(g4), G5(g5), G6(g6), G7(g7) 
@@ -573,16 +84,16 @@ HM01B0::HM01B0(uint8_t mclk_pin, uint8_t pclk_pin, uint8_t vsync_pin, uint8_t hs
   _wire = &wire;
   
   if(g4 == 0xff) {
-	    _hw_config = HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT;
+	    _hw_config = HIMAX_TEENSY_MICROMOD_FLEXIO_4BIT;
   } else {
-	    _hw_config = HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT;
+	    _hw_config = HIMAX_TEENSY_MICROMOD_FLEXIO_8BIT;
   }
   
   //init();
 }
 
 
-int HM01B0::reset()
+int HIMAX::reset()
 {
     // Reset sensor.
      if (cameraWriteRegister(SW_RESET, HIMAX_RESET) != 0) { //cambus_writeb2(&sensor->bus, sensor->slv_addr, SW_RESET, HIMAX_RESET
@@ -594,10 +105,15 @@ int HM01B0::reset()
 
     // Write default regsiters
     int ret = 0;
+    #if defined(use_hm01b0)
     for (int i=0; default_regs[i][0] && ret == 0; i++) {
         ret |= cameraWriteRegister(default_regs[i][0], default_regs[i][1]);
     }
-    
+    #elif defined(use_hm0360)
+    for (int i=0; himax_default_regs[i][0] && ret == 0; i++) {
+        ret |= cameraWriteRegister(himax_default_regs[i][0], himax_default_regs[i][1]);
+    }
+    #endif
     // Set mode to streaming
     //ret |= cameraWriteRegister( MODE_SELECT, HIMAX_MODE_STREAMING);
 
@@ -607,34 +123,34 @@ int HM01B0::reset()
 
 
 // Read a single uint8_t from address and return it as a uint8_t
-uint8_t HM01B0::cameraReadRegister(uint16_t reg) {
-  _wire->beginTransmission(0x24);
+uint8_t HIMAX::cameraReadRegister(uint16_t reg) {
+  _wire->beginTransmission(camAddress);
   _wire->write(reg >> 8);
   _wire->write(reg);
   if (_wire->endTransmission(false) != 0) {
-    Serial.println("error reading HM01B0, address");
+    Serial.println("error reading HIMAX, address");
     return 0;
   }
-  if (_wire->requestFrom(0x24, 1) < 1) {
-    Serial.println("error reading HM01B0, data");
+  if (_wire->requestFrom(camAddress, 1) < 1) {
+    Serial.println("error reading HIMAX, data");
     return 0;
   }
   return _wire->read();
 }
 
 
-uint8_t HM01B0::cameraWriteRegister(uint16_t reg, uint8_t data) {
-  _wire->beginTransmission(0x24);
+uint8_t HIMAX::cameraWriteRegister(uint16_t reg, uint8_t data) {
+  _wire->beginTransmission(camAddress);
   _wire->write(reg >> 8);
   _wire->write(reg);
   _wire->write(data);
   if (_wire->endTransmission() != 0) {
-    Serial.println("error writing to HM01B0");
+    Serial.println("error writing to HIMAX");
   }
   return 0;
 }
 
-int HM01B0::set_pixformat( pixformat_t pfmt)
+int HIMAX::set_pixformat( pixformat_t pfmt)
 {
     int ret = 0;
     switch (pfmt) {
@@ -652,56 +168,83 @@ int HM01B0::set_pixformat( pixformat_t pfmt)
     return ret;
 }
 
-uint8_t HM01B0::set_framesize(framesize_t new_framesize)
+uint8_t HIMAX::set_framesize(framesize_t new_framesize)
 {
     int ret=0;
     //uint16_t w = resolution[framesize][0];
     //uint16_t h = resolution[framesize][1];
 	framesize = new_framesize;
-
-    switch (framesize) {
-        case FRAMESIZE_320X320:
-			_width = 320; _height = 320;
-            for (int i=0; FULL_regs[i][0] && ret == 0; i++) {
-                ret |=  cameraWriteRegister(FULL_regs[i][0], FULL_regs[i][1]);  //cambus_writeb2(&sensor->bus, sensor->slv_addr, FULL_regs[i][0], FULL_regs[i][1]
-            }
-            break;
-        case FRAMESIZE_QVGA:
-			_width = 324; _height = 244;
-            for (int i=0; QVGA_regs[i][0] && ret == 0; i++) {
-                ret |= cameraWriteRegister( QVGA_regs[i][0], QVGA_regs[i][1]);
-            }
-            break;
-        case FRAMESIZE_QQVGA:
-			_width = 160; _height = 120;
-            for (int i=0; QQVGA_regs[i][0] && ret == 0; i++) {
-                ret |= cameraWriteRegister( QQVGA_regs[i][0], QQVGA_regs[i][1]);
-            }
-            break;
-        case FRAMESIZE_QVGA4BIT:
-			_width = 324; _height = 244;
-            for (int i=0; QVGA_regs[i][0] && ret == 0; i++) {
-                ret |= cameraWriteRegister( QVGA_regs[i][0], QVGA_regs[i][1]);
-            }
-			ret = cameraWriteRegister(BIT_CONTROL, 0x42);
-            break;
-		case FRAMESIZE_INVALID:
-            for (int i=0; default_regs[i][0] && ret == 0; i++) {
-                ret |= cameraWriteRegister( default_regs[i][0], default_regs[i][1]);
-			}
-			break;
-		default:
-            ret = -1;
-            
-    }
+    #if defined(use_hm01b0)
+        switch (framesize) {
+            case FRAMESIZE_320X320:
+                _width = 320; _height = 320;
+                for (int i=0; FULL_regs[i][0] && ret == 0; i++) {
+                    ret |=  cameraWriteRegister(FULL_regs[i][0], FULL_regs[i][1]);  //cambus_writeb2(&sensor->bus, sensor->slv_addr, FULL_regs[i][0], FULL_regs[i][1]
+                }
+                break;
+            case FRAMESIZE_QVGA:
+                _width = 324; _height = 244;
+                for (int i=0; QVGA_regs[i][0] && ret == 0; i++) {
+                    ret |= cameraWriteRegister( QVGA_regs[i][0], QVGA_regs[i][1]);
+                }
+                break;
+            case FRAMESIZE_QQVGA:
+                _width = 160; _height = 120;
+                for (int i=0; QQVGA_regs[i][0] && ret == 0; i++) {
+                    ret |= cameraWriteRegister( QQVGA_regs[i][0], QQVGA_regs[i][1]);
+                }
+                break;
+            case FRAMESIZE_QVGA4BIT:
+                _width = 324; _height = 244;
+                for (int i=0; QVGA_regs[i][0] && ret == 0; i++) {
+                    ret |= cameraWriteRegister( QVGA_regs[i][0], QVGA_regs[i][1]);
+                }
+                ret = cameraWriteRegister(BIT_CONTROL, 0x42);
+                break;
+            case FRAMESIZE_INVALID:
+                for (int i=0; default_regs[i][0] && ret == 0; i++) {
+                    ret |= cameraWriteRegister( default_regs[i][0], default_regs[i][1]);
+                }
+                break;
+            default:
+                ret = -1;
+                
+        }
+    #elif defined(use_hm0360)
+        switch (framesize) {
+            case FRAMESIZE_QVGA:
+                _width = 320; _height = 240;
+                for (int i=0; himax_qvga_regs[i][0] && ret == 0; i++) {
+                    ret |= cameraWriteRegister( himax_qvga_regs[i][0], himax_qvga_regs[i][1]);
+                }
+                break;
+            case FRAMESIZE_QQVGA:
+                _width = 160; _height = 120;
+                for (int i=0; himax_qqvga_regs[i][0] && ret == 0; i++) {
+                    ret |= cameraWriteRegister( himax_qqvga_regs[i][0], himax_qqvga_regs[i][1]);
+                }
+                break;
+            case FRAMESIZE_VGA:
+                _width = 640; _height = 480;
+                for (int i=0; himax_vga_regs[i][0] && ret == 0; i++) {
+                    ret |= cameraWriteRegister( himax_vga_regs[i][0], himax_vga_regs[i][1]);
+                }
+                break;
+            default:
+                ret = -1;
+        }
+    #else
+        ret = -1;
+    #endif
     return ret;
 }
 
-int HM01B0::set_framerate(int framerate)
+int HIMAX::set_framerate(int framerate)
 {
     uint8_t osc_div = 0;
     bool    highres = false;
 	//framesize_t framesize;
+    uint8_t osc_cfg = 0;
 
     if (framesize == FRAMESIZE_INVALID
             || framesize == FRAMESIZE_QVGA
@@ -709,6 +252,7 @@ int HM01B0::set_framerate(int framerate)
         highres = true;
     }
 
+    #if defined(use_hm01b0)
     switch (framerate) {
         case 15:
             osc_div = (highres == true) ? 0x01 : 0x00;
@@ -729,9 +273,26 @@ int HM01B0::set_framerate(int framerate)
     osc_div |= 0x28; // try also adding gated PCLK option I think
 	Serial.printf("OSC_CLK_DIV: 0x%X\n", osc_div);
     return cameraWriteRegister(OSC_CLK_DIV,osc_div);
+    #elif defined(use_hm0360)
+      if (framerate <= 10) {
+            osc_div = (highres == true) ? 0x03 : 0x03;
+        } else if (framerate <= 15) {
+            osc_div = (highres == true) ? 0x02 : 0x03;
+        } else if (framerate <= 30) {
+            osc_div = (highres == true) ? 0x01 : 0x02;
+        } else {
+            // Set to the max possible FPS at this resolution.
+            osc_div = (highres == true) ? 0x00 : 0x01;
+        }
+
+        osc_cfg = cameraReadRegister(OSC_CONFIG);
+        return cameraWriteRegister(OSC_CONFIG, (osc_cfg & 0xFC) | osc_div);
+    #else
+        ret = -1;
+    #endif
 }
 
-int HM01B0::set_brightness(int level)
+int HIMAX::set_brightness(int level)
 {
     uint8_t ae_mean;
     // Simulate brightness levels by setting AE loop target mean.
@@ -754,11 +315,14 @@ int HM01B0::set_brightness(int level)
     return cameraWriteRegister(AE_TARGET_MEAN, ae_mean);
 }
 
-int HM01B0::set_gainceiling(gainceiling_t gainceiling)
+int HIMAX::set_gainceiling(gainceiling_t gainceiling)
 {
     int ret = 0;
     int gain = 0x0;
     switch (gainceiling) {
+        case GAINCEILING_1X:
+            gain = 0x00;
+            break;
         case GAINCEILING_2X:
             gain = 0x01;
             break;
@@ -774,19 +338,24 @@ int HM01B0::set_gainceiling(gainceiling_t gainceiling)
         default:
             return -1;
     }
-    ret |= cameraWriteRegister(MAX_AGAIN_FULL, gain);
-    ret |= cameraWriteRegister(MAX_AGAIN_BIN2, gain);
+    #if defined(use_hm01b0)
+        ret |= cameraWriteRegister(MAX_AGAIN_FULL, gain);
+        ret |= cameraWriteRegister(MAX_AGAIN_BIN2, gain);
+    #else
+        ret |= cameraWriteRegister(ANALOG_GAIN, gain);
+    #endif
     return ret;
 }
 
-int HM01B0::set_colorbar(int enable)
+int HIMAX::set_colorbar(int enable)
 {
     return cameraWriteRegister(TEST_PATTERN_MODE, enable & 0x1);
 }
 
-int HM01B0::set_autoGain(int enable, float gain_db, float gain_db_ceiling)
+int HIMAX::set_autoGain(int enable, float gain_db, float gain_db_ceiling)
 {
     int ret = 0;
+    #if defined(use_hm01b0)
     if ((enable == 0) && (!isnanf(gain_db)) && (!isinff(gain_db))) {
         gain_db = max(min(gain_db, 24.0f), 0.0f);
         int gain = fast_ceilf(fast_log2(fast_expf((gain_db / 20.0f) * fast_log(10.0f))));
@@ -800,15 +369,21 @@ int HM01B0::set_autoGain(int enable, float gain_db, float gain_db_ceiling)
         ret |= cameraWriteRegister( MAX_AGAIN_BIN2, (gain&0x7));
         ret |= cameraWriteRegister( AE_CTRL, 1);
     }
+    #else
+        ret = -1;
+    #endif
     return ret;
 }
 
 
-int HM01B0::get_vt_pix_clk(uint32_t *vt_pix_clk)
+int HIMAX::get_vt_pix_clk(uint32_t *vt_pix_clk)
 {
     uint8_t reg;
+#if defined(use_hm01b0)
     reg = cameraReadRegister(OSC_CLK_DIV);
-
+#else
+    reg = cameraReadRegister(OSC_CONFIG);
+#endif
     // 00 -> MCLK / 8
     // 01 -> MCLK / 4
     // 10 -> MCLK / 2
@@ -821,7 +396,7 @@ int HM01B0::get_vt_pix_clk(uint32_t *vt_pix_clk)
 }
 
 
-int HM01B0::get_gain_db(float *gain_db)
+int HIMAX::get_gain_db(float *gain_db)
 {
     uint8_t gain;
 	gain = cameraReadRegister(ANALOG_GAIN);
@@ -832,11 +407,14 @@ int HM01B0::get_gain_db(float *gain_db)
     return 0;
 }
 
-int HM01B0::getCameraClock(uint32_t *vt_pix_clk)
+int HIMAX::getCameraClock(uint32_t *vt_pix_clk)
 {
     uint8_t reg;
-	reg = cameraReadRegister(OSC_CLK_DIV);
-
+#if defined(use_hm01b0)
+    reg = cameraReadRegister(OSC_CLK_DIV);
+#else
+    reg = cameraReadRegister(OSC_CONFIG);
+#endif
     // 00 -> MCLK / 8
     // 01 -> MCLK / 4
     // 10 -> MCLK / 2
@@ -848,10 +426,10 @@ int HM01B0::getCameraClock(uint32_t *vt_pix_clk)
     return 0;
 }
 
-int HM01B0::set_autoExposure(int enable, int exposure_us)
+int HIMAX::set_autoExposure(int enable, int exposure_us)
 {
     int ret=0;
-
+#if defined(use_hm01b0)
     if (enable) {
         ret |= cameraWriteRegister( AE_CTRL, 1);
     } else {
@@ -893,9 +471,13 @@ int HM01B0::set_autoExposure(int enable, int exposure_us)
     }
 
     return ret;
+#else
+    ret = -1;
+    return ret;
+#endif
 }
 
-int HM01B0::get_exposure_us(int *exposure_us)
+int HIMAX::get_exposure_us(int *exposure_us)
 {
     int ret = 0;
     uint32_t line_len;
@@ -917,37 +499,53 @@ int HM01B0::get_exposure_us(int *exposure_us)
     return ret;
 }
 
-int HM01B0::set_hmirror(int enable)
+int HIMAX::set_hmirror(int enable)
 {
     uint8_t reg;
 	reg = cameraReadRegister( IMG_ORIENTATION);
     int ret = reg;
     ret |= cameraWriteRegister( IMG_ORIENTATION, HIMAX_SET_HMIRROR(reg, enable)) ;
+#if defined(use_hm01b0)
     ret |= cameraWriteRegister(  GRP_PARAM_HOLD, 0x01);
+#else
+    ret |= cameraWriteRegister(  COMMAND_UPDATE, 0x01);
+#endif
     return ret;
 }
 
-int HM01B0::set_vflip( int enable)
+int HIMAX::set_vflip( int enable)
 {
     uint8_t reg;
     reg = cameraReadRegister( IMG_ORIENTATION);
     int ret = reg;
     ret |= cameraWriteRegister(  IMG_ORIENTATION, HIMAX_SET_VMIRROR(reg, enable)) ;
+#if defined(use_hm01b0)
     ret |= cameraWriteRegister(  GRP_PARAM_HOLD, 0x01);
+#else
+    ret |= cameraWriteRegister(  COMMAND_UPDATE, 0x01);
+#endif
     return ret;
 }
 
-uint8_t HM01B0::set_mode(uint8_t Mode, uint8_t FrameCnt)
+uint8_t HIMAX::set_mode(uint8_t Mode, uint8_t FrameCnt)
 {
 	uint8_t Err = 0;
-	
+#if defined(use_hm01b0)
     if (Mode == HIMAX_MODE_STREAMING_NFRAMES)
     {
         Err = cameraWriteRegister(PMU_AUTOSLEEP_FRAMECNT, FrameCnt);
     } else {
         Err = cameraWriteRegister(MODE_SELECT, Mode);
 	}
-	
+#else
+    if (Mode == HIMAX_MODE_STREAMING_NFRAMES)
+    {
+        Err = cameraWriteRegister(0x3028, FrameCnt);
+    } else {
+        Err = cameraWriteRegister(MODE_SELECT, Mode);
+	}
+#endif
+
     if(Err != 0)
     {
 		Serial.println("Mode Could not be set");
@@ -956,55 +554,77 @@ uint8_t HM01B0::set_mode(uint8_t Mode, uint8_t FrameCnt)
     return Err;
 }
 
-uint8_t HM01B0::cmdUpdate()
+uint8_t HIMAX::cmdUpdate()
 {
 	uint8_t status = 0;
+#if defined(use_hm01b0)
     status = cameraWriteRegister(GRP_PARAM_HOLD, 0x01);
+#else
+    status = cameraWriteRegister(COMMAND_UPDATE, 0x01);
+#endif
 	return status;
 }
 
 
-uint8_t HM01B0::loadSettings(camera_reg_settings_t settings)
+uint8_t HIMAX::loadSettings(camera_reg_settings_t settings)
 {
 	uint8_t ret = 0;
-	switch(settings) {
-		case LOAD_DEFAULT_REGS:
-			for (int i=0; default_regs[i][0] && ret == 0; i++) {
-				ret |=  cameraWriteRegister(default_regs[i][0], default_regs[i][1]);
-			}
-			break;
-		case LOAD_WALKING1S_REG:
-			for (int i=0; Walking1s_reg[i][0] && ret == 0; i++) {
-				ret |=  cameraWriteRegister(Walking1s_reg[i][0], Walking1s_reg[i][1]);  
-			}
-			break;
-		case LOAD_SHM01B0INIT_REGS:
-			_width = 320; _height = 240;
-			framesize = FRAMESIZE_QVGA;
-			for (int i=0; sHM01B0Init_regs[i][0] && ret == 0; i++) {
-				ret |=  cameraWriteRegister(sHM01B0Init_regs[i][0], sHM01B0Init_regs[i][1]);  
-			}
-			break;		
-		default:
-			ret = -1;
-	}
+    #if defined(use_hm01b0)
+    Serial.println("Using HM01b0 settings");
+        switch(settings) {
+            case LOAD_DEFAULT_REGS:
+                for (int i=0; default_regs[i][0] && ret == 0; i++) {
+                    ret |=  cameraWriteRegister(default_regs[i][0], default_regs[i][1]);
+                }
+                break;
+            case LOAD_WALKING1S_REG:
+                for (int i=0; Walking1s_reg[i][0] && ret == 0; i++) {
+                    ret |=  cameraWriteRegister(Walking1s_reg[i][0], Walking1s_reg[i][1]);  
+                }
+                break;
+            case LOAD_SHM01B0INIT_REGS:
+                _width = 320; _height = 240;
+                framesize = FRAMESIZE_QVGA;
+                for (int i=0; sHM01B0Init_regs[i][0] && ret == 0; i++) {
+                    ret |=  cameraWriteRegister(sHM01B0Init_regs[i][0], sHM01B0Init_regs[i][1]);  
+                }
+                break;
+            default:
+                ret = -1;
+        }
+    #elif defined(use_hm0360)
+        Serial.println("Using HM0360 settings");
+
+      switch(settings) {
+            case LOAD_DEFAULT_REGS:
+                for (int i=0; himax_default_regs[i][0] && ret == 0; i++) {
+                    ret |=  cameraWriteRegister(himax_default_regs[i][0], himax_default_regs[i][1]);
+                }
+                break;
+            default:
+                ret = -1;
+      }
+    #else
+        ret = -1;
+    #endif
+    
 	return ret;
 }
 
 
 //*****************************************************************************
 //
-//! @brief Get HM01B0 Model ID
+//! @brief Get HIMAX Model ID
 //!
-//! @param psCfg                - Pointer to HM01B0 configuration structure.
+//! @param psCfg                - Pointer to HIMAX configuration structure.
 //! @param pui16MID             - Pointer to buffer for the read back model ID.
 //!
-//! This function reads back HM01B0 model ID.
+//! This function reads back HIMAX model ID.
 //!
 //! @return Error code.
 //
 //*****************************************************************************
-uint16_t HM01B0::get_modelid()
+uint16_t HIMAX::get_modelid()
 {
     uint8_t Data;
     uint16_t MID = 0x0000;
@@ -1024,22 +644,22 @@ uint16_t HM01B0::get_modelid()
 //
 //! @brief AE calibration.
 //!
-//! @param psCfg            - Pointer to HM01B0 configuration structure.
+//! @param psCfg            - Pointer to HIMAX configuration structure.
 //! @param ui8CalFrames     - Frame counts for calibratoin.
 //! @param pui8Buffer       - Pointer to the frame buffer.
 //! @param ui32BufferLen    - Framebuffer size.
 //! @param pAECfg           - Pointer to AECfg structure to fill with calibration results
 //!
-//! This function lets HM01B0 AE settled as much as possible within a given frame counts.
+//! This function lets HIMAX AE settled as much as possible within a given frame counts.
 //!
 //! @return Error code.
 //
 //*****************************************************************************
-uint8_t HM01B0::cal_ae( uint8_t CalFrames, uint8_t* Buffer, uint32_t ui32BufferLen,  ae_cfg_t* pAECfg)
+uint8_t HIMAX::cal_ae( uint8_t CalFrames, uint8_t* Buffer, uint32_t ui32BufferLen,  ae_cfg_t* pAECfg)
 {
-    uint8_t        ui32Err     = HM01B0_ERR_OK;
+    uint8_t        ui32Err     = HIMAX_ERR_OK;
     if(pAECfg == NULL){
-        return HM01B0_ERR_PARAMS;
+        return HIMAX_ERR_PARAMS;
     }
 
     for (uint8_t i = 0; i < CalFrames; i++)
@@ -1053,7 +673,7 @@ uint8_t HM01B0::cal_ae( uint8_t CalFrames, uint8_t* Buffer, uint32_t ui32BufferL
         //                                 ui32Err, sAECfg.ui8AETargetMean, sAECfg.ui8ConvergeInTh, sAECfg.ui8AEMean);
 
         // if AE calibration is done in ui8CalFrames, just exit to save some time.
-        if (ui32Err == HM01B0_ERR_OK)
+        if (ui32Err == HIMAX_ERR_OK)
             break;
     }
 
@@ -1065,10 +685,10 @@ uint8_t HM01B0::cal_ae( uint8_t CalFrames, uint8_t* Buffer, uint32_t ui32BufferL
 
 //*****************************************************************************
 //
-//! @brief Get HM01B0 AE convergance
+//! @brief Get HIMAX AE convergance
 //!
-//! @param psCfg            - Pointer to HM01B0 configuration structure.
-//! @param psAECfg          - Pointer to the structure hm01b0_ae_cfg_t.
+//! @param psCfg            - Pointer to HIMAX configuration structure.
+//! @param psAECfg          - Pointer to the structure HIMAX_ae_cfg_t.
 //!
 //! This function checks if AE is converged or not and returns ui32Err accordingly.
 //! If caller needs detailed AE settings, psAECfg has to be non NULL.
@@ -1076,9 +696,9 @@ uint8_t HM01B0::cal_ae( uint8_t CalFrames, uint8_t* Buffer, uint32_t ui32BufferL
 //! @return Error code.
 //
 //*****************************************************************************
-uint8_t HM01B0::get_ae( ae_cfg_t *psAECfg)
+uint8_t HIMAX::get_ae( ae_cfg_t *psAECfg)
 {
-    uint32_t    ui32Err = HM01B0_ERR_OK;
+    uint32_t    ui32Err = HIMAX_ERR_OK;
     uint8_t     ui8AETargetMean;
     uint8_t     ui8AEMinMean;
     uint8_t     ui8AEMean;
@@ -1090,12 +710,12 @@ uint8_t HM01B0::get_ae( ae_cfg_t *psAECfg)
     ui8AEMinMean = cameraReadRegister(AE_MIN_MEAN);
     ui8ConvergeInTh = cameraReadRegister( CONVERGE_IN_TH);
     ui8ConvergeOutTh = cameraReadRegister( CONVERGE_OUT_TH);
-    if (ui32Err != HM01B0_ERR_OK) return ui32Err;
+    if (ui32Err != HIMAX_ERR_OK) return ui32Err;
 
     ui8AEMean = cameraReadRegister( 0x2020);
 
     if ((ui8AEMean < (ui8AETargetMean - ui8ConvergeInTh)) || (ui8AEMean > (ui8AETargetMean + ui8ConvergeInTh)))
-        ui32Err = HM01B0_ERR_AE_NOT_CONVERGED;
+        ui32Err = HIMAX_ERR_AE_NOT_CONVERGED;
 
      //Serial.printf("AE Calibration(0x%02X) TargetMean 0x%02X, ConvergeInTh 0x%02X, AEMean 0x%02X\n",
      //                                 ui8AETargetMean, ui8ConvergeInTh, ui8AEMean);
@@ -1112,17 +732,16 @@ uint8_t HM01B0::get_ae( ae_cfg_t *psAECfg)
 }
 
 
-bool HM01B0::begin(bool use_gpio)
+bool HIMAX::begin(bool use_gpio)
 {
     _use_gpio = use_gpio;
-
     
 	_wire->begin();
-
+    
 	pinMode(VSYNC_PIN, INPUT_PULLDOWN); // VSYNC Pin
 	pinMode(PCLK_PIN, INPUT_PULLDOWN);  //PCLK
 	pinMode(HSYNC_PIN, INPUT_PULLDOWN);  //HSYNC
-	//pinMode(MCLK_PIN, OUTPUT);
+	pinMode(MCLK_PIN, OUTPUT);
 	
 	/*Thanks to @luni for how to read 8bit port	\
 	 * https://forum.pjrc.com/threads/66771-MicroMod-Beta-Testing?p=275567&viewfull=1#post275567
@@ -1191,7 +810,7 @@ bool HM01B0::begin(bool use_gpio)
 }
 
 #define FLEXIO_USE_DMA
-void HM01B0::readFrame(void* buffer){
+void HIMAX::readFrame(void* buffer){
 	set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
     if(!_use_gpio) {
         readFrameFlexIO(buffer);
@@ -1202,20 +821,20 @@ void HM01B0::readFrame(void* buffer){
 }
 
 
-bool HM01B0::readContinuous(bool(*callback)(void *frame_buffer), void *fb1, void *fb2) {
+bool HIMAX::readContinuous(bool(*callback)(void *frame_buffer), void *fb1, void *fb2) {
 	//set_mode(HIMAX_MODE_STREAMING_NFRAMES, 1);
 
 	return startReadFlexIO(callback, fb1, fb2);
 
 }
 
-void HM01B0::stopReadContinuous() {
+void HIMAX::stopReadContinuous() {
 	
   stopReadFlexIO();
 
 }
 
-void HM01B0::readFrameGPIO(void* buffer)
+void HIMAX::readFrameGPIO(void* buffer)
 {
 
   uint8_t* b = (uint8_t*)buffer;
@@ -1238,7 +857,7 @@ void HM01B0::readFrameGPIO(void* buffer)
     while ((*_vsyncPort & _vsyncMask) == 0); // wait for HIGH
     emHigh = 0;
     while ((*_vsyncPort & _vsyncMask) != 0); // wait for LOW
-  } while (emHigh < 2);
+  } while (emHigh < 1);  //was 2
 
   for (int i = 0; i < _height; i++) {
     // rising edge indicates start of line
@@ -1268,7 +887,7 @@ void HM01B0::readFrameGPIO(void* buffer)
 
 }
 
-void HM01B0::readFrame4BitGPIO(void* buffer)
+void HIMAX::readFrame4BitGPIO(void* buffer)
 {
 
   uint8_t* b = (uint8_t*)buffer;
@@ -1331,7 +950,7 @@ void HM01B0::readFrame4BitGPIO(void* buffer)
 }
 
 
-bool HM01B0::flexio_configure()
+bool HIMAX::flexio_configure()
 {
     // Going to try this using my FlexIO library.
 
@@ -1339,7 +958,7 @@ bool HM01B0::flexio_configure()
     uint8_t tpclk_pin; 
     _pflex = FlexIOHandler::mapIOPinToFlexIOHandler(PCLK_PIN, tpclk_pin);
     if (!_pflex) {
-        Serial.printf("HM01B0 PCLK(%u) is not a valid Flex IO pin\n", PCLK_PIN);
+        Serial.printf("HIMAX PCLK(%u) is not a valid Flex IO pin\n", PCLK_PIN);
         return false;
     }
     _pflexio = &(_pflex->port());
@@ -1353,14 +972,14 @@ bool HM01B0::flexio_configure()
 
     // make sure the minimum here is valid: 
     if ((thsync_pin == 0xff) || (tg0 == 0xff) || (tg1 == 0xff) || (tg2 == 0xff) || (tg3 == 0xff)) {
-        Serial.printf("HM01B0 Some pins did not map to valid Flex IO pin\n");
+        Serial.printf("HIMAX Some pins did not map to valid Flex IO pin\n");
         Serial.printf("    HSYNC(%u %u) G0(%u %u) G1(%u %u) G2(%u %u) G3(%u %u)", 
             HSYNC_PIN, thsync_pin, G0, tg0, G1, tg1, G2, tg2, G3, tg3 );
         return false;
     } 
     // Verify that the G numbers are consecutive... Should use arrays!
     if ((tg1 != (tg0+1)) || (tg2 != (tg0+2)) || (tg3 != (tg0+3))) {
-        Serial.printf("HM01B0 Flex IO pins G0-G3 are not consective\n");
+        Serial.printf("HIMAX Flex IO pins G0-G3 are not consective\n");
         Serial.printf("    G0(%u %u) G1(%u %u) G2(%u %u) G3(%u %u)", 
             G0, tg0, G1, tg1, G2, tg2, G3, tg3 );
         return false;
@@ -1371,15 +990,15 @@ bool HM01B0::flexio_configure()
         uint8_t tg6 = _pflex->mapIOPinToFlexPin(G6);
         uint8_t tg7 = _pflex->mapIOPinToFlexPin(G7);
         if ((tg4 != (tg0+4)) || (tg5 != (tg0+5)) || (tg6 != (tg0+6)) || (tg7 != (tg0+7))) {
-            Serial.printf("HM01B0 Flex IO pins G4-G7 are not consective with G0-3\n");
+            Serial.printf("HIMAX Flex IO pins G4-G7 are not consective with G0-3\n");
             Serial.printf("    G0(%u %u) G4(%u %u) G5(%u %u) G6(%u %u) G7(%u %u)", 
                 G0, tg0, G4, tg4, G5, tg5, G6, tg6, G7, tg7 );
             return false;
         }
-        _hw_config = HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT;
+        _hw_config = HIMAX_TEENSY_MICROMOD_FLEXIO_8BIT;
         Serial.println("Custom - Flexio is 8 bit mode");
     } else {
-        _hw_config = HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT;
+        _hw_config = HIMAX_TEENSY_MICROMOD_FLEXIO_4BIT;
         Serial.println("Custom - Flexio is 4 bit mode");
     }
 
@@ -1388,7 +1007,7 @@ bool HM01B0::flexio_configure()
     if (_pflex->claimShifter(3)) _fshifter = 3;
     else if (_pflex->claimShifter(7)) _fshifter = 7;
     else {
-      Serial.printf("HM01B0 Flex IO: Could not claim Shifter 3 or 7\n");
+      Serial.printf("HIMAX Flex IO: Could not claim Shifter 3 or 7\n");
       return false;
     }
     _fshifter_mask = 1 << _fshifter;   // 4 channels.
@@ -1397,7 +1016,7 @@ bool HM01B0::flexio_configure()
     // Now request one timer
     uint8_t _ftimer = _pflex->requestTimers(); // request 1 timer. 
     if (_ftimer == 0xff) {
-        Serial.printf("HM01B0 Flex IO: failed to request timer\n");
+        Serial.printf("HIMAX Flex IO: failed to request timer\n");
         return false;
     }
 
@@ -1449,7 +1068,7 @@ bool HM01B0::flexio_configure()
     Serial.printf(" FlexIO2 Config, param=%08X\n", FLEXIO2_PARAM);
 #endif
     
-    if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_8BIT) {
+    if(_hw_config == HIMAX_TEENSY_MICROMOD_FLEXIO_8BIT) {
 		Serial.println("8Bit FlexIO");
         // SHIFTCFG, page 2927
         //  PWIDTH: number of bits to be shifted on each Shift clock
@@ -1482,7 +1101,7 @@ bool HM01B0::flexio_configure()
             | FLEXIO_TIMCTL_TRGSRC;
     }
 
-    if(_hw_config == HM01B0_TEENSY_MICROMOD_FLEXIO_4BIT) {
+    if(_hw_config == HIMAX_TEENSY_MICROMOD_FLEXIO_4BIT) {
         
         // SHIFTCFG, page 2927
         //  PWIDTH: number of bits to be shifted on each Shift clock
@@ -1583,11 +1202,12 @@ return true;
 }
 
 
-void HM01B0::readFrameFlexIO(void* buffer)
+void HIMAX::readFrameFlexIO(void* buffer)
 {
     //flexio_configure(); // one-time hardware setup
     // wait for VSYNC to be low
     while ((*_vsyncPort & _vsyncMask) != 0);
+    
     _pflexio->SHIFTSTAT = _fshifter_mask; // clear any prior shift status
     _pflexio->SHIFTERR = _fshifter_mask;
 
@@ -1641,7 +1261,7 @@ void HM01B0::readFrameFlexIO(void* buffer)
 
 
 
-bool HM01B0::startReadFlexIO(bool(*callback)(void *frame_buffer), void *fb1, void *fb2)
+bool HIMAX::startReadFlexIO(bool(*callback)(void *frame_buffer), void *fb1, void *fb2)
 {
 #ifdef FLEXIO_USE_DMA
     if (fb1 == nullptr || fb2 == nullptr) return false;
@@ -1679,12 +1299,12 @@ bool HM01B0::startReadFlexIO(bool(*callback)(void *frame_buffer), void *fb1, voi
 }
 
 
-void HM01B0::frameStartInterruptFlexIO()
+void HIMAX::frameStartInterruptFlexIO()
 {
 	active_dma_camera->processFrameStartInterruptFlexIO();
 }
 
-void HM01B0::processFrameStartInterruptFlexIO()
+void HIMAX::processFrameStartInterruptFlexIO()
 {
     if (!_dma_active) {
     	FLEXIO2_SHIFTSTAT = _fshifter_mask; // clear any prior shift status
@@ -1704,12 +1324,12 @@ void HM01B0::processFrameStartInterruptFlexIO()
 	asm("DSB");
 }
 
-void HM01B0::dmaInterruptFlexIO()
+void HIMAX::dmaInterruptFlexIO()
 {
 	active_dma_camera->processDMAInterruptFlexIO();
 }
 
-void HM01B0::processDMAInterruptFlexIO()
+void HIMAX::processDMAInterruptFlexIO()
 {
 	dma_flexio.clearInterrupt();
 	if (dma_flexio.error()) return; // TODO: report or handle error??
@@ -1723,7 +1343,7 @@ void HM01B0::processDMAInterruptFlexIO()
 }
 
 
-bool HM01B0::stopReadFlexIO()
+bool HIMAX::stopReadFlexIO()
 {
 	detachInterrupt(VSYNC_PIN);
 	dma_flexio.disable();
@@ -1739,13 +1359,13 @@ bool HM01B0::stopReadFlexIO()
 // experiment with DMA
 //================================================================================
 // Define our DMA structure.
-DMAChannel HM01B0::_dmachannel;
-DMASetting HM01B0::_dmasettings[2];
-uint32_t HM01B0::_dmaBuffer1[DMABUFFER_SIZE] __attribute__ ((used, aligned(32)));
-uint32_t HM01B0::_dmaBuffer2[DMABUFFER_SIZE] __attribute__ ((used, aligned(32)));
+DMAChannel HIMAX::_dmachannel;
+DMASetting HIMAX::_dmasettings[2];
+uint32_t HIMAX::_dmaBuffer1[DMABUFFER_SIZE] __attribute__ ((used, aligned(32)));
+uint32_t HIMAX::_dmaBuffer2[DMABUFFER_SIZE] __attribute__ ((used, aligned(32)));
 extern "C" void xbar_connect(unsigned int input, unsigned int output); // in pwm.c
 
-HM01B0 *HM01B0::active_dma_camera = nullptr;
+HIMAX *HIMAX::active_dma_camera = nullptr;
 
 void dumpDMA_TCD(DMABaseClass *dmabc)
 {
@@ -1761,7 +1381,7 @@ void dumpDMA_TCD(DMABaseClass *dmabc)
 //===================================================================
 // Start a DMA operation -
 //===================================================================
-bool HM01B0::startReadFrameDMA(bool(*callback)(void *frame_buffer), uint8_t *fb1, uint8_t *fb2)
+bool HIMAX::startReadFrameDMA(bool(*callback)(void *frame_buffer), uint8_t *fb1, uint8_t *fb2)
 {
   // First see if we need to allocate frame buffers.
   if (fb1) _frame_buffer_1 = fb1;
@@ -1886,7 +1506,7 @@ bool HM01B0::startReadFrameDMA(bool(*callback)(void *frame_buffer), uint8_t *fb1
 //===================================================================
 // stopReadFrameDMA - stop doing the reading and then exit.
 //===================================================================
-bool HM01B0::stopReadFrameDMA()
+bool HIMAX::stopReadFrameDMA()
 {
 
   // hopefully it start here (fingers crossed)
@@ -1924,11 +1544,11 @@ bool HM01B0::stopReadFrameDMA()
 //===================================================================
 // Our Frame Start interrupt.
 //===================================================================
-void  HM01B0::frameStartInterrupt() {
+void  HIMAX::frameStartInterrupt() {
   active_dma_camera->processFrameStartInterrupt();  // lets get back to the main object...
 }
 
-void  HM01B0::processFrameStartInterrupt() {
+void  HIMAX::processFrameStartInterrupt() {
   _bytes_left_dma = (_width + _frame_ignore_cols) * _height; // for now assuming color 565 image...
   _dma_index = 0;
   _frame_col_index = 0;  // which column we are in a row
@@ -1948,20 +1568,20 @@ void  HM01B0::processFrameStartInterrupt() {
 //===================================================================
 // Our DMA interrupt.
 //===================================================================
-void HM01B0::dmaInterrupt() {
+void HIMAX::dmaInterrupt() {
   active_dma_camera->processDMAInterrupt();  // lets get back to the main object...
 }
 
 
 // This version assumes only called when HREF...  as set pixclk to only fire
 // when set.
-void HM01B0::processDMAInterrupt() {
+void HIMAX::processDMAInterrupt() {
   _dmachannel.clearInterrupt(); // tell system we processed it.
   asm("DSB");
   //DebugDigitalWrite(OV7670_DEBUG_PIN_3, HIGH);
 
   if (_dma_state == DMA_STATE_STOPPED) {
-    Serial.println("HM01B0::dmaInterrupt called when DMA_STATE_STOPPED");
+    Serial.println("HIMAX::dmaInterrupt called when DMA_STATE_STOPPED");
     return; //
   }
 
@@ -2038,7 +1658,7 @@ void HM01B0::processDMAInterrupt() {
 
     if (_dma_state == DMASTATE_STOP_REQUESTED) {
 #ifdef DEBUG_CAMERA
-      Serial.println("HM01B0::dmaInterrupt - Stop requested");
+      Serial.println("HIMAX::dmaInterrupt - Stop requested");
 #endif
       _dma_state = DMA_STATE_STOPPED;
     } else {
@@ -2086,7 +1706,7 @@ typedef struct {
 
 frameStatics_t fstat;
 
-void HM01B0::captureFrameStatistics()
+void HIMAX::captureFrameStatistics()
 {
    memset((void*)&fstat, 0, sizeof(fstat));
 
@@ -2137,9 +1757,9 @@ void HM01B0::captureFrameStatistics()
 typedef struct {
   const __FlashStringHelper *reg_name;
   uint16_t reg;
-} HM01B0_TO_NAME_t;
+} HIMAX_TO_NAME_t;
 
-static const HM01B0_TO_NAME_t hm01b0_reg_name_table[] PROGMEM {
+static const HIMAX_TO_NAME_t HIMAX_reg_name_table[] PROGMEM {
     {F("MODEL_ID_H"), 0x0000},
     {F("MODEL_ID_L"), 0x0001},
     {F("FRAME_COUNT"), 0x0005},
@@ -2225,11 +1845,11 @@ static const HM01B0_TO_NAME_t hm01b0_reg_name_table[] PROGMEM {
     {F("PCLK_POLARITY"), 0x3068}
 };
 
-void HM01B0::showRegisters(void)
+void HIMAX::showRegisters(void)
 {
     Serial.println("\n*** Camera Registers ***");
-    for (uint16_t ii = 0; ii < (sizeof(hm01b0_reg_name_table)/sizeof(hm01b0_reg_name_table[0])); ii++) {
-        uint8_t reg_value = cameraReadRegister(hm01b0_reg_name_table[ii].reg);
-        Serial.printf("%s(%x): %u(%x)\n", hm01b0_reg_name_table[ii].reg_name, hm01b0_reg_name_table[ii].reg, reg_value, reg_value);
+    for (uint16_t ii = 0; ii < (sizeof(HIMAX_reg_name_table)/sizeof(HIMAX_reg_name_table[0])); ii++) {
+        uint8_t reg_value = cameraReadRegister(HIMAX_reg_name_table[ii].reg);
+        Serial.printf("%s(%x): %u(%x)\n", HIMAX_reg_name_table[ii].reg_name, HIMAX_reg_name_table[ii].reg, reg_value, reg_value);
     }
 }
