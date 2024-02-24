@@ -213,9 +213,15 @@ uint8_t HIMAX::set_framesize(framesize_t new_framesize)
     #elif defined(use_hm0360)
         switch (framesize) {
             case FRAMESIZE_QVGA:
-                _width = 320; _height = 240;
+                _width = 328; _height = 248;
                 for (int i=0; himax_qvga_regs[i][0] && ret == 0; i++) {
                     ret |= cameraWriteRegister( himax_qvga_regs[i][0], himax_qvga_regs[i][1]);
+                }
+                break;
+            case FRAMESIZE_QVGA4BIT:
+                _width = 328; _height = 248;
+                for (int i=0; himax_qvga4bit_regs[i][0] && ret == 0; i++) {
+                    ret |= cameraWriteRegister( himax_qvga4bit_regs[i][0], himax_qvga4bit_regs[i][1]);
                 }
                 break;
             case FRAMESIZE_QQVGA:
@@ -815,7 +821,11 @@ void HIMAX::readFrame(void* buffer){
     if(!_use_gpio) {
         readFrameFlexIO(buffer);
     } else {
-        readFrameGPIO(buffer);
+        if(_hw_config == HIMAX_TEENSY_MICROMOD_FLEXIO_4BIT) {
+            readFrame4BitGPIO(buffer);
+        } else {
+            readFrameGPIO(buffer);
+        }
     }
 
 }

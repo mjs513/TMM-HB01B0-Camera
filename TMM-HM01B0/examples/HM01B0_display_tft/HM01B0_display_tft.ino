@@ -43,7 +43,7 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
 };
 
 
-#define _hmConfig 2  // select mode string below
+#define _hmConfig 3  // select mode string below
 
 PROGMEM const char hmConfig[][48] = {
  "HIMAX_SPARKFUN_ML_CARRIER",
@@ -127,9 +127,9 @@ ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST);
 #endif
 
 uint16_t FRAME_WIDTH, FRAME_HEIGHT;
-DMAMEM uint8_t frameBuffer[(324) * 244] __attribute__((aligned(32)));
-uint8_t sendImageBuf[(324) * 244 * 2];
-DMAMEM uint8_t frameBuffer2[(324) * 244] __attribute__((aligned(32)));
+DMAMEM uint8_t frameBuffer[(328) * 248] __attribute__((aligned(32)));
+uint8_t sendImageBuf[(328) * 248 * 2];
+DMAMEM uint8_t frameBuffer2[(328) * 248] __attribute__((aligned(32)));
 
 bool g_continuous_flex_mode = false;
 void * volatile g_new_flexio_data = nullptr;
@@ -201,7 +201,7 @@ void setup()
   tft.fillScreen(TFT_BLACK);
   
   uint8_t status;
-  status = himax.begin();
+  status = himax.begin(true);
 
   if(!status) {
     Serial.println("Camera failed to start!!!!");
@@ -254,7 +254,12 @@ void setup()
       while (1) {}
     }
     status = 0;
-    status = himax.set_framesize(FRAMESIZE_QVGA);
+
+    if(_hmConfig == 1 || _hmConfig == 3){
+      status = himax.set_framesize(FRAMESIZE_QVGA4BIT);
+    } else {
+      status = himax.set_framesize(FRAMESIZE_QVGA);
+    }
     if (status != 0) {
       Serial.println("Framesize Settings failed to load");
       while (1) {}

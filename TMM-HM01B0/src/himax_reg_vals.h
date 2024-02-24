@@ -848,6 +848,29 @@ const uint16_t himax_qvga_regs[][2] = {
     {COMMAND_UPDATE,        0x01},
     {0x0000,                0x00},
 };
+/*  note to self:  1 bit enable
+https://github.com/ArduCAM/Pico4ML_AdapterBoard/blob/main/HM0360/lib/arducam/hm0360_init.h
+*/
+const uint16_t himax_qvga4bit_regs[][2] = {
+    {OSC_CONFIG,           0x09},  // Core = 12MHz PCLKO = 24MHz I2C = 12MHz
+    {H_SUBSAMPLE,           0x01},
+    {V_SUBSAMPLE,           0x01},
+    {BINNING_MODE,          0x00},
+    {WIN_MODE,              0x00},
+    {MAX_INTG_H,            (HIMAX_FRAME_LENGTH_QVGA-4)>>8},
+    {MAX_INTG_L,            (HIMAX_FRAME_LENGTH_QVGA-4)&0xFF},
+    {FRAME_LEN_LINES_H,     (HIMAX_FRAME_LENGTH_QVGA>>8)},
+    {FRAME_LEN_LINES_L,     (HIMAX_FRAME_LENGTH_QVGA&0xFF)},
+    {LINE_LEN_PCK_H,        (HIMAX_LINE_LEN_PCK_QVGA>>8)},
+    {LINE_LEN_PCK_L,        (HIMAX_LINE_LEN_PCK_QVGA&0xFF)},
+    {ROI_START_END_H,       0xF0},
+    {ROI_START_END_V,       0xE0},
+    {0x310F,                0x40},
+    //{0x1014,0x01},  
+    {0x3112,0x04},	//was 0x0c
+    {COMMAND_UPDATE,        0x01},
+    {0x0000,                0x00},
+};
 
 const uint16_t himax_qqvga_regs[][2] = {
     {OSC_CONFIG,           0x09},  // Core = 12MHz PCLKO = 24MHz I2C = 12MHz

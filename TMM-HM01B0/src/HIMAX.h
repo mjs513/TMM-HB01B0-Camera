@@ -208,7 +208,7 @@ class HIMAX
 	const volatile uint32_t *_hrefPort;
 	const volatile uint32_t *_pclkPort;
 	
-	uint32_t OMV_XCLK_FREQUENCY	= 12000000;
+	uint32_t OMV_XCLK_FREQUENCY	= 6000000;
     
     bool _use_gpio = false;
 
