@@ -348,7 +348,7 @@ int HIMAX::set_gainceiling(gainceiling_t gainceiling)
         ret |= cameraWriteRegister(MAX_AGAIN_FULL, gain);
         ret |= cameraWriteRegister(MAX_AGAIN_BIN2, gain);
     #else
-        ret |= cameraWriteRegister(ANALOG_GAIN, gain);
+        ret |= cameraWriteRegister(MAX_AGAIN, (gain & 0x07));
     #endif
     return ret;
 }
@@ -361,7 +361,7 @@ int HIMAX::set_colorbar(int enable)
 int HIMAX::set_autoGain(int enable, float gain_db, float gain_db_ceiling)
 {
     int ret = 0;
-    #if defined(use_hm01b0)
+#if defined(use_hm01b0)
     if ((enable == 0) && (!isnanf(gain_db)) && (!isinff(gain_db))) {
         gain_db = max(min(gain_db, 24.0f), 0.0f);
         int gain = fast_ceilf(fast_log2(fast_expf((gain_db / 20.0f) * fast_log(10.0f))));
@@ -375,9 +375,24 @@ int HIMAX::set_autoGain(int enable, float gain_db, float gain_db_ceiling)
         ret |= cameraWriteRegister( MAX_AGAIN_BIN2, (gain&0x7));
         ret |= cameraWriteRegister( AE_CTRL, 1);
     }
-    #else
-        ret = -1;
-    #endif
+#else
+    uint8_t ae_ctrl = 0;
+    //int ret = cameraReadRegister(AE_CTRL, &ae_ctrl);
+    ae_ctrl = cameraReadRegister(AE_CTRL);
+    if (!enable && (!isnanf(gain_db)) && (!isinff(gain_db))) {
+        gain_db = max(min(gain_db, 24.0f), 0.0f);
+        uint8_t gain = fast_ceilf(logf(expf((gain_db / 20.0f) * M_LN10)) / M_LN2);
+        ret |= cameraWriteRegister(AE_CTRL, (ae_ctrl & 0xFE));
+        ret |= cameraWriteRegister(ANALOG_GAIN, ((gain & 0x7) << 4));
+    } else if (enable && (!isnanf(gain_db_ceiling)) && (!isinff(gain_db_ceiling))) {
+        gain_db_ceiling = max(min(gain_db_ceiling, 24.0f), 0.0f);
+        uint8_t gain = fast_ceilf(logf(expf((gain_db_ceiling / 20.0f) * M_LN10)) / M_LN2);
+        ret |= cameraWriteRegister(MAX_AGAIN, (gain & 0x07));
+        ret |= cameraWriteRegister(AE_CTRL, (ae_ctrl | 0x01));
+    }
+    ret |= cameraWriteRegister(COMMAND_UPDATE, 0x01);
+#endif
+
     return ret;
 }
 
@@ -435,6 +450,9 @@ int HIMAX::getCameraClock(uint32_t *vt_pix_clk)
 int HIMAX::set_autoExposure(int enable, int exposure_us)
 {
     int ret=0;
+    uint8_t ae_ctrl = 0;
+    
+    ae_ctrl = cameraReadRegister(AE_CTRL);
 #if defined(use_hm01b0)
     if (enable) {
         ret |= cameraWriteRegister( AE_CTRL, 1);
@@ -475,12 +493,50 @@ int HIMAX::set_autoExposure(int enable, int exposure_us)
         ret |= cameraWriteRegister( INTEGRATION_L, coarse_int&0xff);
         ret |= cameraWriteRegister( GRP_PARAM_HOLD, 0x01);
     }
+#else
+    if (enable) {
+        ret |= cameraWriteRegister( AE_CTRL, (ae_ctrl | 0x01));
+    } else {
+        uint32_t line_len;
+        uint32_t frame_len;
+        uint32_t coarse_int;
+        uint32_t vt_pix_clk = 0;
+
+        switch (framesize) {
+            case FRAMESIZE_320X320:
+                line_len = HIMAX_LINE_LEN_PCK_FULL;
+                frame_len = HIMAX_FRAME_LENGTH_FULL;
+                break;
+            case FRAMESIZE_QVGA:
+                line_len = HIMAX_LINE_LEN_PCK_QVGA;
+                frame_len = HIMAX_FRAME_LENGTH_QVGA;
+                break;
+            case FRAMESIZE_QQVGA:
+                line_len = HIMAX_LINE_LEN_PCK_QQVGA;
+                frame_len = HIMAX_FRAME_LENGTH_QQVGA;
+                break;
+            default:
+                return -1;
+        }
+
+        ret |= get_vt_pix_clk(&vt_pix_clk);
+        coarse_int = fast_roundf(exposure_us * (vt_pix_clk / 1000000.0f) / line_len);
+
+        if (coarse_int < 2) {
+            coarse_int = 2;
+        } else if (coarse_int > (frame_len-2)) {
+            coarse_int = frame_len-2;
+        }
+
+        ret |= cameraWriteRegister( AE_CTRL, (ae_ctrl & 0xFE));
+        ret |= cameraWriteRegister( INTEGRATION_H, coarse_int >> 8);
+        ret |= cameraWriteRegister( INTEGRATION_L, coarse_int & 0xff);
+        ret |= cameraWriteRegister( COMMAND_UPDATE, 0x01);
+    }
+#endif
 
     return ret;
-#else
-    ret = -1;
-    return ret;
-#endif
+
 }
 
 int HIMAX::get_exposure_us(int *exposure_us)

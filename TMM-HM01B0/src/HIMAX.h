@@ -207,8 +207,12 @@ class HIMAX
 	const volatile uint32_t *_vsyncPort;
 	const volatile uint32_t *_hrefPort;
 	const volatile uint32_t *_pclkPort;
-	
-	uint32_t OMV_XCLK_FREQUENCY	= 6000000;
+
+#if defined(use_hm01b0)
+    uint32_t OMV_XCLK_FREQUENCY	= 12000000;
+#else
+	uint32_t OMV_XCLK_FREQUENCY	= 12000000;
+#endif
     
     bool _use_gpio = false;
 
@@ -267,7 +271,7 @@ class HIMAX
 	void processFrameStartInterruptFlexIO();
 	static HIMAX *active_dma_camera;
 	
-	//OpenMV support functions:
+	//OpenMV support functions extracted from imglib.h
 	
 	typedef union{
 		uint32_t l;

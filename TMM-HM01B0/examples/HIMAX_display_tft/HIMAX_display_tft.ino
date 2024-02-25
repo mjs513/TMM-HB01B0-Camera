@@ -2,13 +2,13 @@
 #include <SD.h>
 #include <SPI.h>
 
+//#define CAMERA_HM01B0
 #define CAMERA_HM0360
 #if defined(CAMERA_HM0360)
-#define use_hm0360
+#include "hm0360.h"
 #elif defined(CAMERA_HM01B0)
-#define use_hm01b0
+#include "hm01b0.h"
 #endif
-#include "HIMAX.h"
 
 
 #define MCP(m) (uint16_t)(((m & 0xF8) << 8) | ((m & 0xFC) << 3) | (m >> 3))
@@ -43,7 +43,7 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
 };
 
 
-#define _hmConfig 3  // select mode string below
+#define _hmConfig 2  // select mode string below
 
 PROGMEM const char hmConfig[][48] = {
  "HIMAX_SPARKFUN_ML_CARRIER",
@@ -201,7 +201,7 @@ void setup()
   tft.fillScreen(TFT_BLACK);
   
   uint8_t status;
-  status = himax.begin(true);
+  status = himax.begin();
 
   if(!status) {
     Serial.println("Camera failed to start!!!!");
@@ -266,7 +266,7 @@ void setup()
     }
   #endif
 
-  himax.set_framerate(15);  //15, 30, 60, 120
+  himax.set_framerate(15);  //15, 30, 60, (15/30 works for hm360 )
 
   /* Gain Ceilling
    * GAINCEILING_1X

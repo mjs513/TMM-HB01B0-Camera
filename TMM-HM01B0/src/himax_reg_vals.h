@@ -809,6 +809,9 @@ const uint16_t himax_default_regs[][2] = {
     {0x317D,            0x02},
     {0x318C,            0x00},
 
+    {0x310F,            0x00},  //puts it in 8bit mode
+    {0x3112,0x04},	//was 0x0c
+
     {COMMAND_UPDATE,    0x01},
     {0x0000,            0x00},
 };
@@ -827,6 +830,8 @@ const uint16_t himax_vga_regs[][2] = {
     {LINE_LEN_PCK_L,        (HIMAX_LINE_LEN_PCK_VGA&0xFF)},
     {ROI_START_END_H,       0xF0},
     {ROI_START_END_V,       0xE0},
+    {0x310F,                0x00},  //puts it in 8bit mode
+    {0x3112,0x04},	//was 0x0c
     {COMMAND_UPDATE,        0x01},
     {0x0000,                0x00},
 };
@@ -845,6 +850,8 @@ const uint16_t himax_qvga_regs[][2] = {
     {LINE_LEN_PCK_L,        (HIMAX_LINE_LEN_PCK_QVGA&0xFF)},
     {ROI_START_END_H,       0xF0},
     {ROI_START_END_V,       0xE0},
+    {0x310F,                0x00},  //added to get a good pic
+    {0x3112,0x04},	//was 0x0c
     {COMMAND_UPDATE,        0x01},
     {0x0000,                0x00},
 };
