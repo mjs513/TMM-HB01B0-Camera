@@ -213,13 +213,13 @@ uint8_t HIMAX::set_framesize(framesize_t new_framesize)
     #elif defined(use_hm0360)
         switch (framesize) {
             case FRAMESIZE_QVGA:
-                _width = 328; _height = 248;
+                _width = 320; _height = 240;
                 for (int i=0; himax_qvga_regs[i][0] && ret == 0; i++) {
                     ret |= cameraWriteRegister( himax_qvga_regs[i][0], himax_qvga_regs[i][1]);
                 }
                 break;
             case FRAMESIZE_QVGA4BIT:
-                _width = 328; _height = 248;
+                _width = 320; _height = 240;
                 for (int i=0; himax_qvga4bit_regs[i][0] && ret == 0; i++) {
                     ret |= cameraWriteRegister( himax_qvga4bit_regs[i][0], himax_qvga4bit_regs[i][1]);
                 }
@@ -291,8 +291,8 @@ int HIMAX::set_framerate(int framerate)
             osc_div = (highres == true) ? 0x00 : 0x01;
         }
 
-        osc_cfg = cameraReadRegister(OSC_CONFIG);
-        return cameraWriteRegister(OSC_CONFIG, (osc_cfg & 0xFC) | osc_div);
+        osc_cfg = cameraReadRegister(0x0300);
+        return cameraWriteRegister(0x0300, (osc_cfg & 0xFC) | osc_div);
     #else
         ret = -1;
     #endif
@@ -814,11 +814,13 @@ bool HIMAX::begin(bool use_gpio)
 		{
 			pinMode(pin, INPUT_PULLUP);
 		}
+        OMV_XCLK_FREQUENCY = 6000000;
 	} else {
 		for (uint8_t pin : {G0, G1, G2, G3, G4, G5, G6, G7})
 		{
 			pinMode(pin, INPUT_PULLUP);
 		}
+        OMV_XCLK_FREQUENCY = 12000000;
 	}
 	
 #ifdef DEBUG_CAMERA
