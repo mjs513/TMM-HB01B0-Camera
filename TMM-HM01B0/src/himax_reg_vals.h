@@ -15,6 +15,8 @@ typedef enum {
 	LOAD_DEFAULT_REGS,
 	LOAD_WALKING1S_REG,
 	LOAD_SHM01B0INIT_REGS,
+    LOAD_ARDUCAM_REGS,
+    LOAD_GIGA_REGS,
     LOAD_FULL_REGS,
     LOAD_QVGA_REGS,
     LOAD_QQVGA_REGS,
@@ -156,7 +158,24 @@ const uint16_t QVGA_regs[][2] = {
     {FRAME_LEN_LINES_L,     (HIMAX_FRAME_LENGTH_QVGA&0xFF)},
     {LINE_LEN_PCK_H,        (HIMAX_LINE_LEN_PCK_QVGA>>8)},
     {LINE_LEN_PCK_L,        (HIMAX_LINE_LEN_PCK_QVGA&0xFF)},
-	{BIT_CONTROL,			0x02},
+    {GRP_PARAM_HOLD,        0x01},
+    //============= End of regs marker ==================
+    {0x0000,            0x00},
+
+};
+
+const uint16_t QVGA4BIT_regs[][2] = {
+    {0x0383,                0x01},
+    {0x0387,                0x01},
+    {0x0390,                0x00},
+    {QVGA_WIN_EN,           0x01},// Enable QVGA window readout
+    {MAX_INTG_H,            (HIMAX_FRAME_LENGTH_QVGA-2)>>8},
+    {MAX_INTG_L,            (HIMAX_FRAME_LENGTH_QVGA-2)&0xFF},
+    {FRAME_LEN_LINES_H,     (HIMAX_FRAME_LENGTH_QVGA>>8)},
+    {FRAME_LEN_LINES_L,     (HIMAX_FRAME_LENGTH_QVGA&0xFF)},
+    {LINE_LEN_PCK_H,        (HIMAX_LINE_LEN_PCK_QVGA>>8)},
+    {LINE_LEN_PCK_L,        (HIMAX_LINE_LEN_PCK_QVGA&0xFF)},
+	{BIT_CONTROL,			0x42},
     {GRP_PARAM_HOLD,        0x01},
     //============= End of regs marker ==================
     {0x0000,            0x00},
@@ -174,6 +193,7 @@ const uint16_t QQVGA_regs[][2] = {
     {FRAME_LEN_LINES_L,     (HIMAX_FRAME_LENGTH_QQVGA&0xFF)},
     {LINE_LEN_PCK_H,        (HIMAX_LINE_LEN_PCK_QQVGA>>8)},
     {LINE_LEN_PCK_L,        (HIMAX_LINE_LEN_PCK_QQVGA&0xFF)},
+    {BIT_CONTROL,			0x02},
     {GRP_PARAM_HOLD,        0x01},
     //============= End of regs marker ==================
     {0x0000,            0x00},
@@ -499,6 +519,97 @@ const uint16_t Arducam_hm01b0_324x244[][2]  = {
     //============= End of regs marker ==================
     {0x0000,            0x00},
 };
+
+const uint16_t giga_default_regs[][2] = {
+    {BLC_TGT,               0x08},          //  BLC target :8  at 8 bit mode
+    {BLC2_TGT,              0x08},          //  BLI target :8  at 8 bit mode
+    {0x3044,                0x0A},          //  Increase CDS time for settling
+    {0x3045,                0x00},          //  Make symetric for cds_tg and rst_tg
+    {0x3047,                0x0A},          //  Increase CDS time for settling
+    {0x3050,                0xC0},          //  Make negative offset up to 4x
+    {0x3051,                0x42},
+    {0x3052,                0x50},
+    {0x3053,                0x00},
+    {0x3054,                0x03},          //  tuning sf sig clamping as lowest
+    {0x3055,                0xF7},          //  tuning dsun
+    {0x3056,                0xF8},          //  increase adc nonoverlap clk
+    {0x3057,                0x29},          //  increase adc pwr for missing code
+    {0x3058,                0x1F},          //  turn on dsun
+    {0x3059,                0x1E},
+    {0x3064,                0x00},
+    {0x3065,                0x04},          //  pad pull 0
+    {ANA_Register_17,       0x00},          //  Disable internal oscillator
+
+    {BLC_CFG,               0x43},          //  BLC_on, IIR
+
+    {0x1001,                0x43},          //  BLC dithering en
+    {0x1002,                0x43},          //  blc_darkpixel_thd
+    {0x0350,                0x7F},          //  Dgain Control
+    {BLI_EN,                0x01},          //  BLI enable
+    {0x1003,                0x00},          //  BLI Target [Def: 0x20]
+
+    {DPC_CTRL,              0x01},          //  DPC option 0: DPC off   1 : mono   3 : bayer1   5 : bayer2
+    {0x1009,                0xA0},          //  cluster hot pixel th
+    {0x100A,                0x60},          //  cluster cold pixel th
+    {SINGLE_THR_HOT,        0x90},          //  single hot pixel th
+    {SINGLE_THR_COLD,       0x40},          //  single cold pixel th
+    {0x1012,                0x00},          //  Sync. shift disable
+    {STATISTIC_CTRL,        0x07},          //  AE stat en | MD LROI stat en | magic
+    {0x2003,                0x00},
+    {0x2004,                0x1C},
+    {0x2007,                0x00},
+    {0x2008,                0x58},
+    {0x200B,                0x00},
+    {0x200C,                0x7A},
+    {0x200F,                0x00},
+    {0x2010,                0xB8},
+    {0x2013,                0x00},
+    {0x2014,                0x58},
+    {0x2017,                0x00},
+    {0x2018,                0x9B},
+
+    {AE_CTRL,               0x01},          //Automatic Exposure
+    {AE_TARGET_MEAN,        0x64},          //AE target mean          [Def: 0x3C]
+    {AE_MIN_MEAN,           0x0A},          //AE min target mean      [Def: 0x0A]
+    {CONVERGE_IN_TH,        0x03},          //Converge in threshold   [Def: 0x03]
+    {CONVERGE_OUT_TH,       0x05},          //Converge out threshold  [Def: 0x05]
+    {MAX_INTG_H,            (HIMAX_FRAME_LENGTH_QVGA-2)>>8},          //Maximum INTG High Byte  [Def: 0x01]
+    {MAX_INTG_L,            (HIMAX_FRAME_LENGTH_QVGA-2)&0xFF},        //Maximum INTG Low Byte   [Def: 0x54]
+    {MAX_AGAIN_FULL,        0x04},          //Maximum Analog gain in full frame mode [Def: 0x03]
+    {MAX_AGAIN_BIN2,        0x04},          //Maximum Analog gain in bin2 mode       [Def: 0x04]
+    {MAX_DGAIN,             0xC0},
+
+    {INTEGRATION_H,         0x01},          //Integration H           [Def: 0x01]
+    {INTEGRATION_L,         0x08},          //Integration L           [Def: 0x08]
+    {ANALOG_GAIN,           0x00},          //Analog Global Gain      [Def: 0x00]
+    {DAMPING_FACTOR,        0x20},          //Damping Factor          [Def: 0x20]
+    {DIGITAL_GAIN_H,        0x01},          //Digital Gain High       [Def: 0x01]
+    {DIGITAL_GAIN_L,        0x00},          //Digital Gain Low        [Def: 0x00]
+
+    {FS_CTRL,               0x00},          //Flicker Control
+
+    {FS_60HZ_H,             0x00},
+    {FS_60HZ_L,             0x3C},
+    {FS_50HZ_H,             0x00},
+    {FS_50HZ_L,             0x32},
+
+    {MD_CTRL,               0x00},
+    {FRAME_LEN_LINES_H,     HIMAX_FRAME_LENGTH_QVGA>>8},
+    {FRAME_LEN_LINES_L,     HIMAX_FRAME_LENGTH_QVGA&0xFF},
+    {LINE_LEN_PCK_H,        HIMAX_LINE_LEN_PCK_QVGA>>8},
+    {LINE_LEN_PCK_L,        HIMAX_LINE_LEN_PCK_QVGA&0xFF},
+    {QVGA_WIN_EN,           0x01},          // Enable QVGA window readout
+    {0x0383,                0x01},
+    {0x0387,                0x01},
+    {0x0390,                0x00},
+    {0x3011,                0x70},
+    {0x3059,                0x42},
+    {OSC_CLK_DIV,           0x0B},
+    {IMG_ORIENTATION,       0x00},          // change the orientation
+    {0x0104,                0x01},
+    {0x0000,                0x00},  // EOF
+};
+
 #elif defined(use_hm0360)
 
 #define HIMAX_BOOT_RETRY            (10)

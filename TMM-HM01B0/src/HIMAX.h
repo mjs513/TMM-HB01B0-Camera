@@ -41,7 +41,11 @@ SOFTWARE.
 #include <Wire.h>
 #include <FlexIO_t4.h>
 
-
+#if __has_include("hm01b0.h")
+#define use_hm01b0
+#else
+#define use_hm0360
+#endif
 #include "himax_regs.h"
 #include "himax_reg_vals.h"
 
@@ -49,11 +53,6 @@ SOFTWARE.
 //Do not touch this define
 #define SensorMonochrome 1
 
-enum
-{
-  CAMERA_HM01B0 = 0,
-  CAMERA_HM0360
-};
 
 typedef enum {
     PIXFORMAT_INVALID = 0,
@@ -209,7 +208,7 @@ class HIMAX
 	const volatile uint32_t *_pclkPort;
 
 #if defined(use_hm01b0)
-    uint32_t OMV_XCLK_FREQUENCY	= 12000000;
+    uint32_t OMV_XCLK_FREQUENCY	= 6000000;
 #else
 	uint32_t OMV_XCLK_FREQUENCY	= 12000000;
 #endif

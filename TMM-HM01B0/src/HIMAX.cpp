@@ -36,7 +36,6 @@ SOFTWARE.
 #include "HIMAX.h"
 
 #include <Wire.h>
-#define use_hm0360
 
 #define DEBUG_CAMERA
 #define DEBUG_CAMERA_VERBOSE
@@ -177,7 +176,7 @@ uint8_t HIMAX::set_framesize(framesize_t new_framesize)
     #if defined(use_hm01b0)
         switch (framesize) {
             case FRAMESIZE_320X320:
-                _width = 320; _height = 320;
+                _width = 324; _height = 324;
                 for (int i=0; FULL_regs[i][0] && ret == 0; i++) {
                     ret |=  cameraWriteRegister(FULL_regs[i][0], FULL_regs[i][1]);  //cambus_writeb2(&sensor->bus, sensor->slv_addr, FULL_regs[i][0], FULL_regs[i][1]
                 }
@@ -196,10 +195,10 @@ uint8_t HIMAX::set_framesize(framesize_t new_framesize)
                 break;
             case FRAMESIZE_QVGA4BIT:
                 _width = 324; _height = 244;
-                for (int i=0; QVGA_regs[i][0] && ret == 0; i++) {
-                    ret |= cameraWriteRegister( QVGA_regs[i][0], QVGA_regs[i][1]);
+                for (int i=0; QVGA4BIT_regs[i][0] && ret == 0; i++) {
+                    ret |= cameraWriteRegister( QVGA4BIT_regs[i][0], QVGA4BIT_regs[i][1]);
                 }
-                ret = cameraWriteRegister(BIT_CONTROL, 0x42);
+                //ret = cameraWriteRegister(BIT_CONTROL, 0x42);  //this puts in 4bit
                 break;
             case FRAMESIZE_INVALID:
                 for (int i=0; default_regs[i][0] && ret == 0; i++) {
@@ -645,12 +644,27 @@ uint8_t HIMAX::loadSettings(camera_reg_settings_t settings)
                 }
                 break;
             case LOAD_SHM01B0INIT_REGS:
-                _width = 320; _height = 240;
+                _width = 324; _height = 244;
                 framesize = FRAMESIZE_QVGA;
                 for (int i=0; sHM01B0Init_regs[i][0] && ret == 0; i++) {
                     ret |=  cameraWriteRegister(sHM01B0Init_regs[i][0], sHM01B0Init_regs[i][1]);  
                 }
                 break;
+            case LOAD_ARDUCAM_REGS:
+                _width = 324; _height = 244;
+                framesize = FRAMESIZE_QVGA;
+                for (int i=0; Arducam_hm01b0_324x244[i][0] && ret == 0; i++) {
+                    ret |=  cameraWriteRegister(Arducam_hm01b0_324x244[i][0], Arducam_hm01b0_324x244[i][1]);  
+                }
+                break;
+            case LOAD_GIGA_REGS:
+                _width = 324; _height = 244;
+                framesize = FRAMESIZE_QVGA;
+                for (int i=0; giga_default_regs[i][0] && ret == 0; i++) {
+                    ret |=  cameraWriteRegister(giga_default_regs[i][0], giga_default_regs[i][1]);  
+                }
+                break;                
+                
             default:
                 ret = -1;
         }
@@ -814,7 +828,7 @@ bool HIMAX::begin(bool use_gpio)
 		{
 			pinMode(pin, INPUT_PULLUP);
 		}
-        OMV_XCLK_FREQUENCY = 6000000;
+        OMV_XCLK_FREQUENCY = 12000000;
 	} else {
 		for (uint8_t pin : {G0, G1, G2, G3, G4, G5, G6, G7})
 		{
@@ -916,6 +930,7 @@ void HIMAX::readFrameGPIO(void* buffer)
 	_grayscale = (pixformat == PIXFORMAT_GRAYSCALE);
 	bytesPerRow = _width * 2;
   #endif
+  Serial.printf("readFrameGPIO Gray:%u bpr: %u\n", _grayscale, bytesPerRow);
 
   // Falling edge indicates start of frame
   //pinMode(PCLK_PIN, INPUT); // make sure back to input pin...
@@ -938,7 +953,7 @@ void HIMAX::readFrameGPIO(void* buffer)
       while ((*_pclkPort & _pclkMask) == 0); // wait for HIGH
 
       //uint32_t in = ((_frame_buffer_pointer)? GPIO1_DR : GPIO6_DR) >> 18; // read all bits in parallel
-      uint32_t in =  (GPIO7_PSR >> 4); // read all bits in parallel
+      uint8_t in =  (GPIO7_PSR >> 4); // read all bits in parallel
 	  //uint32_t in = mmBus;
 
       if (!(j & 1) || !_grayscale) {
@@ -972,6 +987,7 @@ void HIMAX::readFrame4BitGPIO(void* buffer)
 	bytesPerRow = _width * 2 * 2;
   #endif
 
+  Serial.printf("readFrame4BitGPIO Gray:%u bpr: %u\n", _grayscale, bytesPerRow);
   // Falling edge indicates start of frame
   //pinMode(PCLK_PIN, INPUT); // make sure back to input pin...
   // lets add our own glitch filter.  Say it must be hig for at least 100us
@@ -1828,6 +1844,7 @@ typedef struct {
 } HIMAX_TO_NAME_t;
 
 static const HIMAX_TO_NAME_t HIMAX_reg_name_table[] PROGMEM {
+    #if defined(use_hm01b0)
     {F("MODEL_ID_H"), 0x0000},
     {F("MODEL_ID_L"), 0x0001},
     {F("FRAME_COUNT"), 0x0005},
@@ -1911,6 +1928,116 @@ static const HIMAX_TO_NAME_t HIMAX_reg_name_table[] PROGMEM {
     {F("OUTPUT_PIN_STATUS_CONTROL"), 0x3065},
     {F("ANA_Register_17"), 0x3067},
     {F("PCLK_POLARITY"), 0x3068}
+    #elif defined(use_hm0360)
+    {F("MODEL_ID_H"), 0x0000},
+    {F("MODEL_ID_L"), 0x0001},
+    {F("SILICON_REV"), 0x0002},
+    {F("FRAME_COUNT_H"), 0x0005},
+    {F("FRAME_COUNT_L"), 0x0006},
+    {F("PIXEL_ORDER"), 0x0007},
+    {F("MODE_SELECT"), 0x0100},
+    {F("IMG_ORIENTATION"), 0x0101},
+    {F("EMBEDDED_LINE_EN"), 0x0102},
+    {F("SW_RESET"), 0x0103},
+    {F("COMMAND_UPDATE"), 0x0104},
+    {F("INTEGRATION_H"), 0x0202},
+    {F("INTEGRATION_L"), 0x0203},
+    {F("ANALOG_GAIN"), 0x0205},
+    {F("DIGITAL_GAIN_H"), 0x020E},
+    {F("DIGITAL_GAIN_L"), 0x020F},
+    {F("PLL1_CONFIG"), 0x0300},
+    {F("PLL2_CONFIG"), 0x0301},
+    {F("PLL3_CONFIG"), 0x0302},
+    {F("FRAME_LEN_LINES_H"), 0x0340},
+    {F("FRAME_LEN_LINES_L"), 0x0341},
+    {F("LINE_LEN_PCK_H"), 0x0342},
+    {F("LINE_LEN_PCK_L"), 0x0343},
+    {F("MONO_MODE"), 0x0370},
+    {F("MONO_MODE_ISP"), 0x0371},
+    {F("MONO_MODE_SEL"), 0x0372},
+    {F("H_SUBSAMPLE"), 0x0380},
+    {F("V_SUBSAMPLE"), 0x0381},
+    {F("BINNING_MODE"), 0x0382},
+    {F("TEST_PATTERN_MODE"), 0x0601},
+    {F("BLC_TGT"), 0x1004},
+    {F("BLC2_TGT"), 0x1009},
+    {F("MONO_CTRL"), 0x100A},
+    {F("OPFM_CTRL"), 0x1014},
+    {F("CMPRS_CTRL"), 0x102F},
+    {F("CMPRS_01"), 0x1030},
+    {F("CMPRS_02"), 0x1031},
+    {F("CMPRS_03"), 0x1032},
+    {F("CMPRS_04"), 0x1033},
+    {F("CMPRS_05"), 0x1034},
+    {F("CMPRS_06"), 0x1035},
+    {F("CMPRS_07"), 0x1036},
+    {F("CMPRS_08"), 0x1037},
+    {F("CMPRS_09"), 0x1038},
+    {F("CMPRS_10"), 0x1039},
+    {F("CMPRS_11"), 0x103A},
+    {F("CMPRS_12"), 0x103B},
+    {F("CMPRS_13"), 0x103C},
+    {F("CMPRS_14"), 0x103D},
+    {F("CMPRS_15"), 0x103E},
+    {F("CMPRS_16"), 0x103F},
+    {F("AE_CTRL"), 0x2000},
+    {F("AE_CTRL1"), 0x2001},
+    {F("CNT_ORGH_H"), 0x2002},
+    {F("CNT_ORGH_L"), 0x2003},
+    {F("CNT_ORGV_H"), 0x2004},
+    {F("CNT_ORGV_L"), 0x2005},
+    {F("CNT_STH_H"), 0x2006},
+    {F("CNT_STH_L"), 0x2007},
+    {F("CNT_STV_H"), 0x2008},
+    {F("CNT_STV_L"), 0x2009},
+    {F("CTRL_PG_SKIPCNT"), 0x200A},
+    {F("BV_WIN_WEIGHT_EN"), 0x200D},
+    {F("MAX_INTG_H"), 0x2029},
+    {F("MAX_INTG_L"), 0x202A},
+    {F("MAX_AGAIN"), 0x202B},
+    {F("MAX_DGAIN_H"), 0x202C},
+    {F("MAX_DGAIN_L"), 0x202D},
+    {F("MIN_INTG"), 0x202E},
+    {F("MIN_AGAIN"), 0x202F},
+    {F("MIN_DGAIN"), 0x2030},
+    {F("T_DAMPING"), 0x2031},
+    {F("N_DAMPING"), 0x2032},
+    {F("ALC_TH"), 0x2033},
+    {F("AE_TARGET_MEAN"), 0x2034},
+    {F("AE_MIN_MEAN"), 0x2035},
+    {F("AE_TARGET_ZONE"), 0x2036},
+    {F("CONVERGE_IN_TH"), 0x2037},
+    {F("CONVERGE_OUT_TH"), 0x2038},
+    {F("FS_CTRL"), 0x203B},
+    {F("FS_60HZ_H"), 0x203C},
+    {F("FS_60HZ_L"), 0x203D},
+    {F("FS_50HZ_H"), 0x203E},
+    {F("FS_50HZ_L"), 0x203F},
+    {F("FRAME_CNT_TH"), 0x205B},
+    {F("AE_MEAN"), 0x205D},
+    {F("AE_CONVERGE"), 0x2060},
+    {F("AE_BLI_TGT"), 0x2070},
+    {F("PULSE_MODE"), 0x2061},
+    {F("PULSE_TH_H"), 0x2062},
+    {F("PULSE_TH_L"), 0x2063},
+    {F("INT_INDIC"), 0x2064},
+    {F("INT_CLEAR"), 0x2065},
+    {F("MD_CTRL"), 0x2080},
+    {F("ROI_START_END_V"), 0x2081},
+    {F("ROI_START_END_H"), 0x2082},
+    {F("MD_TH_MIN"), 0x2083},
+    {F("MD_TH_STR_L"), 0x2084},
+    {F("MD_TH_STR_H"), 0x2085},
+    {F("MD_LIGHT_COEF"), 0x2099},
+    {F("MD_BLOCK_NUM_TH"), 0x209B},
+    {F("MD_LATENCY"), 0x209C},
+    {F("MD_LATENCY_TH"), 0x209D},
+    {F("MD_CTRL1"), 0x209E},
+    {F("PMU_CFG_3"), 0x3024},
+    {F("PMU_CFG_4"), 0x3025},
+    {F("WIN_MODE"), 0x3030},
+    {F("PAD_REGISTER_07"), 0x3112}
+#endif
 };
 
 void HIMAX::showRegisters(void)

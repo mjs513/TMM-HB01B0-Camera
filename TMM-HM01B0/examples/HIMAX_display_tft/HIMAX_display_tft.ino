@@ -2,8 +2,8 @@
 #include <SD.h>
 #include <SPI.h>
 
-//#define CAMERA_HM01B0
-#define CAMERA_HM0360
+#define CAMERA_HM01B0
+//#define CAMERA_HM0360
 #if defined(CAMERA_HM0360)
 #include "hm0360.h"
 #elif defined(CAMERA_HM01B0)
